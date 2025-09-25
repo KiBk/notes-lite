@@ -49,6 +49,8 @@ npm install --prefix backend
 npm test --prefix backend
 ```
 
+GitHub Actions (`.github/workflows/ci.yml`) runs the same commands on pushes and pull requests.
+
 ## Authentication
 
 - **OpenID Connect** – Set the following environment variables (via `.env` consumed by `docker compose`, or directly when running the backend) to delegate authentication to your identity provider (e.g. Authelia):

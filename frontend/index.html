@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notes Lite</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="app__header">
+      <h1 class="app__brand">Notes Lite</h1>
+      <button class="app__add-note" id="addNoteButton" type="button" title="Add note">+</button>
+    </header>
+
+    <main class="app__content" id="notesContainer" aria-live="polite"></main>
+  </div>
+
+  <section class="login" id="loginPanel">
+    <div class="login__card">
+      <h2>Welcome back</h2>
+      <p class="login__subtitle">Enter a name to load your notes.</p>
+      <form id="loginForm">
+        <label class="login__label" for="usernameInput">Name</label>
+        <input id="usernameInput" class="login__input" name="username" placeholder="Your name" required />
+        <button class="login__submit" type="submit">Continue</button>
+      </form>
+      <button class="login__submit login__submit--secondary" id="oidcLoginButton" type="button" hidden>Continue with Single Sign-On</button>
+    </div>
+  </section>
+
+  <div class="modal" id="noteModal" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal__backdrop" id="modalBackdrop"></div>
+    <div class="modal__dialog" role="document">
+      <form id="noteForm">
+        <header class="modal__header">
+          <h2 id="modalTitle">Edit note</h2>
+          <button type="button" class="modal__close" id="closeModalButton" aria-label="Close">×</button>
+        </header>
+        <label class="modal__label" for="noteTitleInput">Title</label>
+        <input id="noteTitleInput" class="modal__input" name="title" maxlength="120" required />
+
+        <label class="modal__label" for="noteBodyInput">Body</label>
+        <textarea id="noteBodyInput" class="modal__textarea" name="body" rows="8" required></textarea>
+
+        <footer class="modal__footer">
+          <button class="modal__save" type="submit">Save</button>
+        </footer>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
