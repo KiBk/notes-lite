@@ -52,6 +52,23 @@ async function listNotes(username) {
   return result.rows.map(mapRowToNote);
 }
 
+async function searchNotes(username, query) {
+  const term = `%${query}%`;
+  const result = await pool.query(
+    `SELECT id,
+            title,
+            body,
+            EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+            EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
+       FROM notes
+      WHERE username = $1
+        AND (title ILIKE $2 OR body ILIKE $2)
+      ORDER BY updated_at DESC, created_at DESC`,
+    [username, term]
+  );
+  return result.rows.map(mapRowToNote);
+}
+
 async function createNote({ id, username, title, body }) {
   const result = await pool.query(
     `INSERT INTO notes (id, username, title, body)
@@ -89,9 +106,19 @@ async function updateNote({ id, username, title, body }) {
   return mapRowToNote(result.rows[0]);
 }
 
+async function deleteNote({ id, username }) {
+  const result = await pool.query(
+    `DELETE FROM notes WHERE id = $1 AND username = $2`,
+    [id, username]
+  );
+  return result.rowCount > 0;
+}
+
 module.exports = {
   ensureUser,
   listNotes,
+  searchNotes,
   createNote,
   updateNote,
+  deleteNote,
 };

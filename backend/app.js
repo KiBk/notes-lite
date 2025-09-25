@@ -289,7 +289,23 @@ function createApp({ db, config = {} }) {
 
   app.get("/api/notes", requireUser, async (req, res) => {
     try {
-      const notes = await db.listNotes(req.username);
+      const searchTerm = sanitizeText(req.query?.q || "");
+      let notes;
+      if (searchTerm) {
+        if (typeof db.searchNotes === "function") {
+          notes = await db.searchNotes(req.username, searchTerm);
+        } else {
+          const allNotes = await db.listNotes(req.username);
+          const needle = searchTerm.toLowerCase();
+          notes = allNotes.filter((note) => {
+            const title = (note.title || "").toLowerCase();
+            const body = (note.body || "").toLowerCase();
+            return title.includes(needle) || body.includes(needle);
+          });
+        }
+      } else {
+        notes = await db.listNotes(req.username);
+      }
       res.json({ notes });
     } catch (error) {
       console.error("Failed to fetch notes", error);
@@ -342,6 +358,25 @@ function createApp({ db, config = {} }) {
       res.json({ note: updated });
     } catch (error) {
       console.error("Failed to update note", error);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  });
+
+  app.delete("/api/notes/:id", requireUser, async (req, res) => {
+    const noteId = req.params.id;
+    try {
+      if (typeof db.deleteNote !== "function") {
+        return res.status(501).json({ error: "DELETE_NOT_SUPPORTED" });
+      }
+
+      const removed = await db.deleteNote({ id: noteId, username: req.username });
+      if (!removed) {
+        return res.status(404).json({ error: "NOTE_NOT_FOUND" });
+      }
+
+      res.status(204).end();
+    } catch (error) {
+      console.error("Failed to delete note", error);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });

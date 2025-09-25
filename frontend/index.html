@@ -10,6 +10,17 @@
   <div class="app">
     <header class="app__header">
       <h1 class="app__brand">Notes Lite</h1>
+      <form id="searchForm" class="app__search" role="search">
+        <label class="sr-only" for="searchInput">Search notes</label>
+        <input
+          id="searchInput"
+          class="app__search-input"
+          name="q"
+          type="search"
+          placeholder="Search notes"
+          autocomplete="off"
+        />
+      </form>
       <button class="app__add-note" id="addNoteButton" type="button" title="Add note">+</button>
     </header>
 
@@ -44,6 +55,7 @@
         <textarea id="noteBodyInput" class="modal__textarea" name="body" rows="8" required></textarea>
 
         <footer class="modal__footer">
+          <button type="button" class="modal__delete" id="deleteNoteButton">Delete</button>
           <button class="modal__save" type="submit">Save</button>
         </footer>
       </form>

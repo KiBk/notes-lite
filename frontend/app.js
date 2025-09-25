@@ -2,6 +2,8 @@ const dom = {
   loginPanel: document.getElementById("loginPanel"),
   loginForm: document.getElementById("loginForm"),
   loginSubtitle: document.querySelector(".login__subtitle"),
+  searchForm: document.getElementById("searchForm"),
+  searchInput: document.getElementById("searchInput"),
   usernameInput: document.getElementById("usernameInput"),
   app: document.querySelector(".app"),
   notesContainer: document.getElementById("notesContainer"),
@@ -14,12 +16,14 @@ const dom = {
   noteTitleInput: document.getElementById("noteTitleInput"),
   noteBodyInput: document.getElementById("noteBodyInput"),
   oidcButton: document.getElementById("oidcLoginButton"),
+  deleteButton: document.getElementById("deleteNoteButton"),
 };
 
 const state = {
   currentUser: null,
   notes: [],
   editing: null,
+  searchTerm: "",
 };
 
 const authConfig = {
@@ -46,6 +50,8 @@ window.addEventListener("keydown", (event) => {
 
 dom.noteForm.addEventListener("submit", handleNoteSubmit);
 dom.oidcButton?.addEventListener("click", handleOidcLogin);
+dom.searchForm?.addEventListener("submit", handleSearchSubmit);
+dom.deleteButton?.addEventListener("click", handleDeleteNote);
 
 async function loadAuthConfig() {
   try {
@@ -122,6 +128,12 @@ function handleOidcLogin() {
   }
 }
 
+async function handleSearchSubmit(event) {
+  event.preventDefault();
+  const term = dom.searchInput ? dom.searchInput.value.trim() : "";
+  await loadNotes(term);
+}
+
 async function handleLogin(event) {
   event.preventDefault();
 
@@ -159,20 +171,31 @@ async function handleLogin(event) {
     state.currentUser = data.username;
     dom.usernameInput.value = "";
     showApp();
-    await loadNotes();
+    await loadNotes("");
   } catch (error) {
     console.error(error);
     alert("Could not log in. Please try again.");
   }
 }
 
-async function loadNotes() {
+async function loadNotes(searchTerm = state.searchTerm || "") {
   if (!state.currentUser) {
     return;
   }
 
+  const query = typeof searchTerm === "string" ? searchTerm.trim() : "";
+  state.searchTerm = query;
+  if (dom.searchInput) {
+    dom.searchInput.value = query;
+  }
+
+  let url = "/api/notes";
+  if (query) {
+    url += `?q=${encodeURIComponent(query)}`;
+  }
+
   try {
-    const response = await fetch("/api/notes", {
+    const response = await fetch(url, {
       credentials: "include",
     });
 
@@ -247,6 +270,12 @@ function openModal({ mode, note }) {
   dom.noteTitleInput.value = note.title || "";
   dom.noteBodyInput.value = note.body || "";
 
+  if (dom.deleteButton) {
+    const showDelete = mode === "edit";
+    dom.deleteButton.hidden = !showDelete;
+    dom.deleteButton.disabled = !showDelete;
+  }
+
   dom.modal.classList.add("is-open");
   document.body.classList.add("modal-open");
   dom.noteTitleInput.focus();
@@ -256,6 +285,10 @@ function closeModal() {
   state.editing = null;
   dom.modal.classList.remove("is-open");
   document.body.classList.remove("modal-open");
+  if (dom.deleteButton) {
+    dom.deleteButton.hidden = true;
+    dom.deleteButton.disabled = true;
+  }
 }
 
 async function handleNoteSubmit(event) {
@@ -296,23 +329,63 @@ async function handleNoteSubmit(event) {
       throw new Error("Failed to save note");
     }
 
-    const data = await response.json();
-    upsertNote(data.note);
+    await response.json();
+    await loadNotes(state.searchTerm);
     closeModal();
-    sortNotes();
-    renderNotes();
   } catch (error) {
     console.error(error);
     alert("Could not save the note. Please try again.");
   }
 }
 
-function upsertNote(note) {
-  const index = state.notes.findIndex((item) => item.id === note.id);
-  if (index === -1) {
-    state.notes.push(note);
-  } else {
-    state.notes[index] = note;
+async function handleDeleteNote() {
+  if (!state.editing || state.editing.mode !== "edit" || !state.currentUser) {
+    return;
+  }
+
+  const noteId = state.editing.note.id;
+  if (!noteId) {
+    return;
+  }
+
+  const shouldDelete = window.confirm("Delete this note?");
+  if (!shouldDelete) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/notes/${noteId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+
+    if (response.status === 204) {
+      await loadNotes(state.searchTerm);
+      closeModal();
+      return;
+    }
+
+    if (response.status === 401) {
+      const payload = await response.json().catch(() => ({}));
+      mergeAuthConfig(payload);
+      await logout({ silent: true });
+      return;
+    }
+
+    if (response.status === 404) {
+      state.notes = state.notes.filter((note) => note.id !== noteId);
+      renderNotes();
+      closeModal();
+      alert("Note not found.");
+      return;
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    const message = typeof payload.error === "string" ? payload.error : "Could not delete the note. Please try again.";
+    alert(message);
+  } catch (error) {
+    console.error(error);
+    alert("Could not delete the note. Please try again.");
   }
 }
 
@@ -374,7 +447,11 @@ async function logout(options = {}) {
 
   state.currentUser = null;
   state.notes = [];
+  state.searchTerm = "";
   hideApp();
+  if (dom.searchInput) {
+    dom.searchInput.value = "";
+  }
   applyAuthConfigUi();
 }
 

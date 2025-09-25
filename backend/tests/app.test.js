@@ -31,6 +31,17 @@ function createStubDb() {
       return getUserNotes(username).map((note) => ({ ...note }));
     },
 
+    async searchNotes(username, query) {
+      const needle = query.toLowerCase();
+      return getUserNotes(username)
+        .filter((note) => {
+          const title = (note.title || "").toLowerCase();
+          const body = (note.body || "").toLowerCase();
+          return title.includes(needle) || body.includes(needle);
+        })
+        .map((note) => ({ ...note }));
+    },
+
     async createNote({ id, username, title, body }) {
       const now = Date.now();
       const note = {
@@ -59,6 +70,16 @@ function createStubDb() {
       };
       items[index] = { ...updated };
       return { ...updated };
+    },
+
+    async deleteNote({ id, username }) {
+      const items = getUserNotes(username);
+      const index = items.findIndex((note) => note.id === id);
+      if (index === -1) {
+        return false;
+      }
+      items.splice(index, 1);
+      return true;
     },
   };
 }
@@ -134,6 +155,50 @@ test("manual login disabled when dev login is off", async () => {
     .expect(403);
   assert.equal(res.body.error, "DEV_LOGIN_DISABLED");
   assert.equal(res.body.devLoginAllowed, false);
+});
+
+test("search endpoint filters notes by query", async () => {
+  const app = createApp({
+    db: createStubDb(),
+    config: { enableDevLogin: true, devAutoLoginUsername: null, cookieSecure: false },
+  });
+  const agent = request.agent(app);
+
+  await agent.post("/api/session").send({ username: "dave" }).expect(200);
+  await agent.post("/api/notes").send({ title: "Groceries", body: "Buy milk" }).expect(201);
+  await agent
+    .post("/api/notes")
+    .send({ title: "Workout", body: "Leg day" })
+    .expect(201);
+
+  const searchRes = await agent.get("/api/notes?q=milk").expect(200);
+  assert.equal(searchRes.body.notes.length, 1);
+  assert.equal(searchRes.body.notes[0].title, "Groceries");
+
+  const emptyRes = await agent.get("/api/notes?q=xyz").expect(200);
+  assert.equal(emptyRes.body.notes.length, 0);
+});
+
+test("delete endpoint removes a note", async () => {
+  const app = createApp({
+    db: createStubDb(),
+    config: { enableDevLogin: true, devAutoLoginUsername: null, cookieSecure: false },
+  });
+  const agent = request.agent(app);
+
+  await agent.post("/api/session").send({ username: "erin" }).expect(200);
+  const createRes = await agent
+    .post("/api/notes")
+    .send({ title: "Temp", body: "Delete me" })
+    .expect(201);
+  const noteId = createRes.body.note.id;
+
+  await agent.delete(`/api/notes/${noteId}`).expect(204);
+
+  const afterDelete = await agent.get("/api/notes").expect(200);
+  assert.equal(afterDelete.body.notes.length, 0);
+
+  await agent.delete(`/api/notes/${noteId}`).expect(404);
 });
 
 test("oidc login flow issues session cookie via adapter", async () => {

@@ -17,6 +17,8 @@ Data lives in the bundled PostgreSQL container. A named volume (`db-data`) keeps
 
 - Pure HTML/CSS/JS
 - Loads notes after logging in and edits them through a modal overlay
+- Keyword search uses the top search bar to request matching notes from the API
+- Notes can be deleted from the modal editor via the delete button
 - All API calls go to relative `/api/*` paths (proxied by nginx in Docker)
 
 ## Backend (`backend/`)
@@ -30,6 +32,7 @@ Data lives in the bundled PostgreSQL container. A named volume (`db-data`) keeps
   - `GET /api/notes` — list notes for the logged-in user
   - `POST /api/notes` — create a note
   - `PUT /api/notes/:id` — update an existing note
+  - `DELETE /api/notes/:id` — delete a note
 
 Run the API locally (without Docker):
 

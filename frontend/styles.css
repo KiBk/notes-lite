@@ -43,6 +43,27 @@ body.modal-open {
   gap: 16px;
 }
 
+.app__search {
+  flex: 1;
+  display: flex;
+}
+
+.app__search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.app__search-input:focus-visible {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.18);
+}
+
 .app__brand {
   margin: 0;
   font-size: 28px;
@@ -183,6 +204,18 @@ body.modal-open {
   background: rgba(37, 99, 235, 0.08);
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .modal {
   position: fixed;
   inset: 0;
@@ -250,6 +283,34 @@ body.modal-open {
   min-height: 160px;
 }
 
+.modal__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.modal__delete {
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal__delete:hover {
+  background: rgba(239, 68, 68, 0.18);
+}
+
+.modal__delete:disabled,
+.modal__delete[hidden] {
+  display: none;
+}
+
 .modal__save {
   align-self: flex-end;
   padding: 12px 18px;
@@ -281,6 +342,16 @@ body.modal-open {
 
   .app__brand {
     font-size: 24px;
+  }
+
+  .app__header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .app__search {
+    order: 3;
+    width: 100%;
   }
 
   .app__add-note {
