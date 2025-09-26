@@ -3,20 +3,23 @@
 A lightweight, Google Keep–style notes app that supports quick capture, editing, and organization across multiple devices.
 
 ## Key Workflows
-- **Sign-in** – Start with a simple name-based login for quick access. The app remembers the last user session and restores it automatically.
-- **Create notes** – Use the plus button to add a new note consisting of a plain-text title and body. Notes save immediately to the user’s account.
-- **Read at a glance** – Notes appear in a responsive masonry layout. Long notes show a preview with a fade-out so cards stay compact; open the note to read everything.
-- **Edit in place** – Click a note to open a modal where you can update the title or body. Changes persist when you save.
+- **Sign-in** – A name-only login screen with a theme toggle (light/dark). Persist the last signed-in user and restore their session automatically.
+- **Create notes** – A fixed floating action button creates a new note seeded with the theme’s default pastel colour. Notes contain a title, body, colour swatch, and metadata, and save immediately for the active user.
+- **Read at a glance** – Notes render in a masonry-style grid with consistent gutters. Card heights auto-adjust; long bodies fade out with a gradient sampled from the card colour.
+- **Edit with context** – Clicking a card (or pressing Enter/Space while focused) opens a colour-tinted sheet modal. The sheet sits on a blurred overlay, matches the current note colour, auto-grows the body textarea, and closes on Escape or backdrop click. The sheet footer hosts action chips (Colour, Pin/Unpin, Archive/Unarchive, Delete forever when applicable) using minimal glyphs (`○`/`●`) instead of emojis.
+- **Colour control** – Tapping the “Colour” chip reveals a floating palette bubble elevated above the sheet. The palette offers seven muted pastel options; it hides when the pointer leaves or focus shifts away, and selecting a colour updates both the card and sheet instantly.
 
 ## Organizing Notes
-- **Pinned section** – Pin important notes directly from the card hover control; pinned notes collect in a dedicated row at the top of the active view. Unpinning is just as easy.
-- **Active vs. Archived** – The interface has two tabs: “Notes” for active items and “Archived” for stored-away notes. Archiving moves a note out of the active view without deleting it. From the modal you can archive (or delete forever if already archived) and unarchive notes back to the active list.
+- **Pinned section** – Hover/focus reveals a minimalist pin control on each card. Pinned notes gather in a dedicated grid above other notes while keeping consistent spacing.
+- **Active vs. Archived** – Two tabs (“Notes”, “Archived”) swap between active and stored-away content. Archive/unarchive actions live in the sheet footer chips; archived notes expose a “Delete forever” chip.
 - **Search everywhere** – A top search bar filters across all notes (active and archived). Results show active matches first, followed by archived ones.
 - **Drag-and-drop ordering** – Reorder notes simply by dragging cards. Active notes let you rearrange within pinned and unpinned sections; archived notes have their own order. The new sequence is saved immediately.
 
 ## Additional Touches
-- **Keyboard friendly** – Cards are focusable and can be opened with Enter or Space; Escape closes the edit modal.
-- **Session aware** – Each user’s notes remain separate, and switching tabs or refreshing keeps the current session.
+- **Keyboard friendly** – Cards are focusable; Enter/Space opens the sheet, Escape closes it, and the colour palette keeps focus until a colour is chosen or dismissed.
+- **Visual polish** – Use blurred sheet overlays, subtle shadows, softened borders, and auto-expanding text areas to keep the UI modern. Replace emoji icons with simple typographic glyphs. Keep action chips horizontally aligned.
+- **Theme aware** – Provide a persistent light/dark theme toggle accessible from both the login screen and top bar. Persist the chosen theme in local storage and respect system defaults.
+- **Session aware** – Each user’s notes remain separate, and switching tabs or refreshing keeps the current session. Persist both user and theme preferences locally.
 - **Docker ready** – The project runs as a multi-container stack (frontend, backend, PostgreSQL) so it can be deployed consistently.
 
 Use this description as the product spec: a developer should be able to recreate the experience by implementing the flows and behaviors outlined above.

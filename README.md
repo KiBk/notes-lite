@@ -4,7 +4,7 @@ A lightweight, Google Keep–style notes app that lets you capture, pin, archive
 
 ## Features
 - Name-based sign-in that remembers the most recent session locally.
-- Create, edit, pin/unpin, archive/unarchive, permanently delete notes, and personalise note colour.
+- Create, edit, pin/unpin, archive/unarchive, permanently delete notes, personalise note colour, and switch themes with a dark mode toggle.
 - Responsive masonry-inspired layout with dedicated pinned and unpinned sections.
 - Global search that surfaces active results first, followed by archived matches.
 - Drag-and-drop reordering for pinned, unpinned, and archived notes (keyboard accessible).

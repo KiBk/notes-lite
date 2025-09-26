@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-function LoginForm({ onLogin, loading }) {
+function LoginForm({ onLogin, loading, theme = 'light', onToggleTheme }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
 
@@ -22,7 +22,19 @@ function LoginForm({ onLogin, loading }) {
   return (
     <div className="auth-shell">
       <form className="auth-card" onSubmit={handleSubmit}>
-        <h1>Notes Lite</h1>
+        <div className="auth-card__header">
+          <h1>Notes Lite</h1>
+          {onToggleTheme ? (
+            <button
+              type="button"
+              className="ghost-button theme-toggle"
+              onClick={onToggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? '☀︎' : '☾'}
+            </button>
+          ) : null}
+        </div>
         <p className="auth-subtitle">Sign in with your name to see your notes.</p>
         <label htmlFor="name" className="auth-label">
           Name

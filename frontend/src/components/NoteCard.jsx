@@ -13,6 +13,7 @@ function NoteCard({ note, onOpen, onTogglePinned, isPinnedSection, isArchivedVie
   };
 
   const pinLabel = note.pinned ? 'Unpin note' : 'Pin note';
+  const pinIcon = note.pinned ? '●' : '○';
 
   return (
     <article
@@ -34,7 +35,7 @@ function NoteCard({ note, onOpen, onTogglePinned, isPinnedSection, isArchivedVie
             aria-label={pinLabel}
             title={pinLabel}
           >
-            📌
+            {pinIcon}
           </button>
         ) : null}
       </header>

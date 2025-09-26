@@ -16,6 +16,7 @@ import NoteCard from './NoteCard';
 import NoteModal from './NoteModal';
 
 const STORAGE_KEY = 'notes-lite:last-user';
+const THEME_STORAGE_KEY = 'notes-lite:theme';
 
 function MasonryCardContainer({ children, provided }) {
   const masonryRef = useMasonryItem();
@@ -42,7 +43,7 @@ function MasonryCardContainer({ children, provided }) {
   );
 }
 
-function NotesWorkspace({ user, onLogout }) {
+function NotesWorkspace({ user, onLogout, theme, onToggleTheme }) {
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search, 250);
   const [notes, setNotes] = useState({ pinned: [], unpinned: [], archived: [] });
@@ -80,8 +81,8 @@ function NotesWorkspace({ user, onLogout }) {
   }, [refreshNotes]);
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    if (user && typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     }
   }, [user]);
 
@@ -272,6 +273,16 @@ function NotesWorkspace({ user, onLogout }) {
           />
         </div>
         <div className="topbar__session">
+          {onToggleTheme ? (
+            <button
+              type="button"
+              className="ghost-button theme-toggle"
+              onClick={onToggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? '☀︎' : '☾'}
+            </button>
+          ) : null}
           <span className="topbar__user">{user.name}</span>
           <button type="button" className="ghost-button" onClick={onLogout}>
             Switch user
@@ -482,17 +493,54 @@ function NotesWorkspace({ user, onLogout }) {
   );
 }
 
+function getInitialUser() {
+  if (typeof window === 'undefined') return null;
+  const stored = window.localStorage.getItem(STORAGE_KEY);
+  if (!stored) return null;
+  try {
+    return JSON.parse(stored);
+  } catch (err) {
+    return null;
+  }
+}
+
+function getInitialTheme() {
+  if (typeof window === 'undefined') return 'light';
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === 'dark' || stored === 'light') {
+    return stored;
+  }
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return prefersDark ? 'dark' : 'light';
+}
+
 function NotesAppContainer() {
-  const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
-    try {
-      return JSON.parse(stored);
-    } catch (err) {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(getInitialUser);
   const [authLoading, setAuthLoading] = useState(false);
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (event) => {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored === 'dark' || stored === 'light') {
+        return;
+      }
+      setTheme(event.matches ? 'dark' : 'light');
+    };
+    media.addEventListener('change', handler);
+    return () => media.removeEventListener('change', handler);
+  }, []);
 
   const handleLogin = async (name) => {
     setAuthLoading(true);
@@ -507,15 +555,35 @@ function NotesAppContainer() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(STORAGE_KEY);
+    }
     setUser(null);
   };
 
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   if (!user) {
-    return <LoginForm onLogin={handleLogin} loading={authLoading} />;
+    return (
+      <LoginForm
+        onLogin={handleLogin}
+        loading={authLoading}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+    );
   }
 
-  return <NotesWorkspace user={user} onLogout={handleLogout} />;
+  return (
+    <NotesWorkspace
+      user={user}
+      onLogout={handleLogout}
+      theme={theme}
+      onToggleTheme={toggleTheme}
+    />
+  );
 }
 
 export { NotesWorkspace };

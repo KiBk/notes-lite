@@ -16,8 +16,11 @@ function NoteModal({
   const [body, setBody] = useState(note?.body || '');
   const [color, setColor] = useState(note?.color || DEFAULT_NOTE_COLOR);
   const [error, setError] = useState('');
+  const [showPalette, setShowPalette] = useState(false);
   const titleRef = useRef(null);
   const bodyRef = useRef(null);
+  const paletteRef = useRef(null);
+  const toggleRef = useRef(null);
 
   const syncBodyHeight = () => {
     if (!bodyRef.current) return;
@@ -32,6 +35,7 @@ function NoteModal({
       setBody(note?.body || '');
       setError('');
       setColor(note?.color || DEFAULT_NOTE_COLOR);
+      setShowPalette(false);
       const timeout = setTimeout(() => {
         titleRef.current?.focus();
         syncBodyHeight();
@@ -58,6 +62,21 @@ function NoteModal({
     syncBodyHeight();
   }, [open, body]);
 
+  useEffect(() => {
+    if (!showPalette) return undefined;
+    const handleClickAway = (event) => {
+      if (
+        paletteRef.current?.contains(event.target)
+        || toggleRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setShowPalette(false);
+    };
+    document.addEventListener('mousedown', handleClickAway);
+    return () => document.removeEventListener('mousedown', handleClickAway);
+  }, [showPalette]);
+
   if (!open) {
     return null;
   }
@@ -80,8 +99,22 @@ function NoteModal({
   const pinLabel = note?.pinned ? 'Unpin' : 'Pin';
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <div className="modal modal--sheet" role="dialog" aria-modal="true" aria-labelledby="note-modal-title">
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="modal modal--sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="note-modal-title"
+        style={{ '--modal-note-color': color }}
+      >
         <form onSubmit={handleSubmit} className="modal__form modal__form--sheet">
           <div className="modal__sheet-header">
             <input
@@ -96,7 +129,7 @@ function NoteModal({
               aria-label="Note title"
             />
             <button type="button" className="icon-button" onClick={onClose} aria-label="Close note">
-              ✕
+              ×
             </button>
           </div>
           <textarea
@@ -112,30 +145,47 @@ function NoteModal({
             aria-label="Note body"
             rows={1}
           />
-          <div className="modal__color-picker" role="group" aria-label="Select note colour">
-            {NOTE_COLORS.map((swatch) => {
-              const selected = color === swatch;
-              return (
-                <button
-                  key={swatch}
-                  type="button"
-                  className={selected ? 'color-swatch color-swatch--selected' : 'color-swatch'}
-                  style={{ backgroundColor: swatch }}
-                  onClick={() => setColor(swatch)}
-                  aria-label={`Set colour ${swatch}`}
-                  aria-pressed={selected}
-                  disabled={isProcessing}
-                >
-                  {selected ? '✓' : ''}
-                </button>
-              );
-            })}
-          </div>
           {error ? <p className="modal__error">{error}</p> : null}
           <footer className="modal__footer modal__footer--sheet">
             <div className="modal__actions">
               {mode === 'edit' ? (
                 <div className="modal__secondary-actions">
+                  <div className="color-popover">
+                    <button
+                      type="button"
+                      className="chip-button modal__color-toggle"
+                      ref={toggleRef}
+                      onClick={() => setShowPalette((prev) => !prev)}
+                      aria-expanded={showPalette}
+                      disabled={isProcessing}
+                    >
+                      Colour
+                    </button>
+                    {showPalette ? (
+                      <div className="modal__color-popover" role="group" aria-label="Select note colour" ref={paletteRef}>
+                        {NOTE_COLORS.map((swatch) => {
+                          const selected = color === swatch;
+                          return (
+                            <button
+                              key={swatch}
+                              type="button"
+                              className={selected ? 'color-swatch color-swatch--selected' : 'color-swatch'}
+                              style={{ backgroundColor: swatch }}
+                              onClick={() => {
+                                setColor(swatch);
+                                setShowPalette(false);
+                              }}
+                              aria-label={`Set colour ${swatch}`}
+                              aria-pressed={selected}
+                              disabled={isProcessing}
+                            >
+                              {selected ? '✓' : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
                   <button
                     type="button"
                     className="chip-button"
