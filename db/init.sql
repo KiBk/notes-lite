@@ -19,4 +19,17 @@ CREATE TABLE IF NOT EXISTS notes (
 ALTER TABLE notes
   ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE notes
+  ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0;
+
+WITH ranked AS (
+  SELECT id,
+         ROW_NUMBER() OVER (PARTITION BY username, archived ORDER BY updated_at DESC, created_at DESC) AS rn
+    FROM notes
+)
+UPDATE notes
+   SET position = ranked.rn
+  FROM ranked
+ WHERE notes.id = ranked.id;
+
 CREATE INDEX IF NOT EXISTS idx_notes_username ON notes (username);

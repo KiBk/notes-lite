@@ -22,3 +22,6 @@ jobs:
 
       - name: Run backend tests
         run: npm test --prefix backend
+
+      - name: Build Docker images
+        run: docker compose build

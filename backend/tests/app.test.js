@@ -23,6 +23,9 @@ function createStubDb() {
       if (a.archived !== b.archived) {
         return a.archived ? 1 : -1;
       }
+      if (a.position !== b.position) {
+        return a.position - b.position;
+      }
       return (b.updatedAt || 0) - (a.updatedAt || 0);
     });
   }
@@ -68,6 +71,10 @@ function createStubDb() {
         createdAt: now,
         updatedAt: now,
         archived: false,
+        position:
+          getUserNotes(username)
+            .filter((item) => !item.archived)
+            .reduce((max, item) => Math.max(max, item.position || 0), 0) + 1,
       };
       getUserNotes(username).push(copyNote(note));
       return copyNote(note);
@@ -101,6 +108,10 @@ function createStubDb() {
         ...items[index],
         archived: true,
         updatedAt: now,
+        position:
+          items
+            .filter((item) => item.archived)
+            .reduce((max, item) => Math.max(max, item.position || 0), 0) + 1,
       };
       items[index] = { ...archivedNote };
       return copyNote(archivedNote);
@@ -112,6 +123,26 @@ function createStubDb() {
       return found ? copyNote(found) : null;
     },
 
+    async unarchiveNote({ id, username }) {
+      const items = getUserNotes(username);
+      const index = items.findIndex((note) => note.id === id && note.archived === true);
+      if (index === -1) {
+        return null;
+      }
+      const now = Date.now();
+      const activePosition = items
+        .filter((note) => !note.archived)
+        .reduce((max, note) => Math.max(max, note.position || 0), 0);
+      const note = {
+        ...items[index],
+        archived: false,
+        position: activePosition + 1,
+        updatedAt: now,
+      };
+      items[index] = { ...note };
+      return copyNote(note);
+    },
+
     async deleteNote({ id, username }) {
       const items = getUserNotes(username);
       const index = items.findIndex((note) => note.id === id);
@@ -120,6 +151,21 @@ function createStubDb() {
       }
       items.splice(index, 1);
       return true;
+    },
+
+    async reorderNotes({ username, ids, archived }) {
+      const items = getUserNotes(username);
+      let position = 1;
+      ids.forEach((id) => {
+        const target = items.find((note) => note.id === id && note.archived === archived);
+        if (target) {
+          target.position = position;
+          target.updatedAt = Date.now();
+          position += 1;
+        }
+      });
+
+      return sortNotesCollection(items.filter((note) => note.archived === archived)).map(copyNote);
     },
   };
 }
@@ -262,6 +308,64 @@ test("delete endpoint archives then removes a note", async () => {
 
   const archivedAfterDelete = await agent.get("/api/notes?folder=archived").expect(200);
   assert.equal(archivedAfterDelete.body.notes.length, 0);
+});
+
+test("reorder endpoint updates note ordering", async () => {
+  const app = createApp({
+    db: createStubDb(),
+    config: { enableDevLogin: true, devAutoLoginUsername: null, cookieSecure: false },
+  });
+  const agent = request.agent(app);
+
+  await agent.post("/api/session").send({ username: "frank" }).expect(200);
+  const first = await agent
+    .post("/api/notes")
+    .send({ title: "First", body: "A" })
+    .expect(201);
+  const second = await agent
+    .post("/api/notes")
+    .send({ title: "Second", body: "B" })
+    .expect(201);
+  const third = await agent
+    .post("/api/notes")
+    .send({ title: "Third", body: "C" })
+    .expect(201);
+
+  const initial = await agent.get("/api/notes").expect(200);
+  assert.deepEqual(initial.body.notes.map((n) => n.title), ["First", "Second", "Third"]);
+
+  const reorderRes = await agent
+    .put("/api/notes/order")
+    .send({ ids: [third.body.note.id, first.body.note.id, second.body.note.id], folder: "active" })
+    .expect(200);
+  assert.deepEqual(reorderRes.body.notes.map((n) => n.title), ["Third", "First", "Second"]);
+
+  const after = await agent.get("/api/notes").expect(200);
+  assert.deepEqual(after.body.notes.map((n) => n.title), ["Third", "First", "Second"]);
+
+  // Reorder archived list
+  await agent.delete(`/api/notes/${first.body.note.id}`).expect(200); // archive 'First'
+  await agent.delete(`/api/notes/${third.body.note.id}`).expect(200); // archive 'Third'
+
+  const archivedBefore = await agent.get("/api/notes?folder=archived").expect(200);
+  assert.deepEqual(archivedBefore.body.notes.map((n) => n.title), ["First", "Third"]);
+
+  await agent
+    .put("/api/notes/order")
+    .send({ ids: [archivedBefore.body.notes[1].id, archivedBefore.body.notes[0].id], folder: "archived" })
+    .expect(200);
+
+  const archivedAfter = await agent.get("/api/notes?folder=archived").expect(200);
+  assert.deepEqual(archivedAfter.body.notes.map((n) => n.title), ["Third", "First"]);
+
+  // Unarchive and confirm placement at end of active list
+  const unarchiveRes = await agent
+    .post(`/api/notes/${archivedAfter.body.notes[0].id}/unarchive`)
+    .expect(200);
+  assert.equal(unarchiveRes.body.note.archived, false);
+
+  const afterUnarchiveActive = await agent.get("/api/notes").expect(200);
+  assert.equal(afterUnarchiveActive.body.notes.slice(-1)[0].title, "Third");
 });
 
 test("oidc login flow issues session cookie via adapter", async () => {

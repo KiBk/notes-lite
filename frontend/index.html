@@ -61,7 +61,10 @@
         <textarea id="noteBodyInput" class="modal__textarea" name="body" rows="8" required></textarea>
 
         <footer class="modal__footer">
-          <button type="button" class="modal__delete" id="deleteNoteButton">Delete</button>
+          <div class="modal__actions-left">
+            <button type="button" class="modal__delete" id="deleteNoteButton">Delete</button>
+            <button type="button" class="modal__restore" id="unarchiveNoteButton" hidden>Move to Notes</button>
+          </div>
           <button class="modal__save" type="submit">Save</button>
         </footer>
       </form>

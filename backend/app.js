@@ -364,6 +364,32 @@ function createApp({ db, config = {} }) {
     }
   });
 
+  app.put("/api/notes/order", requireUser, async (req, res) => {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
+    if (!ids || !ids.length) {
+      return res.status(400).json({ error: "IDS_REQUIRED" });
+    }
+
+    const folder = sanitizeText(req.body?.folder || "active");
+    const archived = folder === "archived";
+
+    if (typeof db.reorderNotes !== "function") {
+      return res.status(501).json({ error: "REORDER_NOT_SUPPORTED" });
+    }
+
+    try {
+      const notes = await db.reorderNotes({
+        username: req.username,
+        ids,
+        archived,
+      });
+      res.json({ notes });
+    } catch (error) {
+      console.error("Failed to reorder notes", error);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  });
+
   app.delete("/api/notes/:id", requireUser, async (req, res) => {
     const noteId = req.params.id;
     try {
@@ -399,6 +425,25 @@ function createApp({ db, config = {} }) {
       res.status(204).end();
     } catch (error) {
       console.error("Failed to delete note", error);
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  });
+
+  app.post("/api/notes/:id/unarchive", requireUser, async (req, res) => {
+    const noteId = req.params.id;
+    try {
+      if (typeof db.unarchiveNote !== "function") {
+        return res.status(501).json({ error: "UNARCHIVE_NOT_SUPPORTED" });
+      }
+
+      const note = await db.unarchiveNote({ id: noteId, username: req.username });
+      if (!note) {
+        return res.status(404).json({ error: "NOTE_NOT_FOUND" });
+      }
+
+      res.json({ note });
+    } catch (error) {
+      console.error("Failed to unarchive note", error);
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });

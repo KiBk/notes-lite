@@ -17,6 +17,7 @@ const dom = {
   noteBodyInput: document.getElementById("noteBodyInput"),
   oidcButton: document.getElementById("oidcLoginButton"),
   deleteButton: document.getElementById("deleteNoteButton"),
+  unarchiveButton: document.getElementById("unarchiveNoteButton"),
   viewTabs: Array.from(document.querySelectorAll("[data-view]")),
 };
 
@@ -33,6 +34,14 @@ const authConfig = {
   loginUrl: null,
   devLoginAllowed: true,
 };
+
+const dragState = {
+  fromIndex: null,
+};
+
+function canDrag() {
+  return !state.searchTerm;
+}
 
 dom.loginForm.addEventListener("submit", handleLogin);
 dom.addNoteButton.addEventListener("click", () => {
@@ -54,6 +63,7 @@ dom.noteForm.addEventListener("submit", handleNoteSubmit);
 dom.oidcButton?.addEventListener("click", handleOidcLogin);
 dom.searchForm?.addEventListener("submit", handleSearchSubmit);
 dom.deleteButton?.addEventListener("click", handleDeleteNote);
+dom.unarchiveButton?.addEventListener("click", handleUnarchive);
 dom.viewTabs?.forEach((button) => {
   button.addEventListener("click", handleViewChange);
 });
@@ -89,6 +99,102 @@ function updateViewControls() {
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
   });
+}
+
+function handleDragStart(event) {
+  if (!canDrag()) {
+    event.preventDefault();
+    return;
+  }
+  const index = Number(event.currentTarget.dataset.index);
+  if (Number.isNaN(index)) {
+    return;
+  }
+  dragState.fromIndex = index;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", "");
+  event.currentTarget.classList.add("is-dragging");
+}
+
+function handleDragOver(event) {
+  if (!canDrag()) {
+    return;
+  }
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  event.currentTarget.classList.add("is-drop-target");
+}
+
+function handleDragLeave(event) {
+  event.currentTarget.classList.remove("is-drop-target");
+}
+
+function handleDragEnd(event) {
+  event.currentTarget.classList.remove("is-dragging");
+  event.currentTarget.classList.remove("is-drop-target");
+  dragState.fromIndex = null;
+}
+
+async function handleDrop(event) {
+  if (!canDrag()) {
+    return;
+  }
+  event.preventDefault();
+  event.currentTarget.classList.remove("is-drop-target");
+
+  const toIndex = Number(event.currentTarget.dataset.index);
+  const fromIndex = dragState.fromIndex;
+  dragState.fromIndex = null;
+
+  if (Number.isNaN(toIndex) || Number.isNaN(fromIndex) || fromIndex === toIndex) {
+    renderNotes();
+    return;
+  }
+
+  const notes = [...state.notes];
+  const [moved] = notes.splice(fromIndex, 1);
+  notes.splice(toIndex, 0, moved);
+  state.notes = notes;
+  renderNotes();
+
+  try {
+    await persistOrder(notes.map((note) => note.id));
+  } catch (error) {
+    console.error(error);
+    await loadNotes(state.searchTerm, state.view);
+    alert("Could not update note order. Reverted.");
+  }
+}
+
+async function persistOrder(ids) {
+  if (!ids.length) {
+    return;
+  }
+
+  const response = await fetch("/api/notes/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ ids, folder: state.view }),
+  });
+
+  if (response.status === 401) {
+    const payload = await response.json().catch(() => ({}));
+    mergeAuthConfig(payload);
+    await logout({ silent: true });
+    throw new Error("unauthorized");
+  }
+
+  if (!response.ok) {
+    throw new Error("reorder_failed");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (Array.isArray(data.notes)) {
+    state.notes = data.notes.map((note) => ({ ...note, archived: Boolean(note.archived) }));
+    renderNotes();
+    updateViewControls();
+  }
 }
 
 async function loadAuthConfig() {
@@ -292,13 +398,27 @@ function renderNotes() {
     return;
   }
 
-  state.notes.forEach((note) => {
+  const enableDrag = canDrag();
+
+  state.notes.forEach((note, index) => {
     const card = document.createElement("article");
     card.className = "note-card";
     if (note.archived) {
       card.classList.add("note-card--archived");
     }
     card.tabIndex = 0;
+
+    if (enableDrag) {
+      card.draggable = true;
+      card.dataset.index = String(index);
+      card.addEventListener("dragstart", handleDragStart);
+      card.addEventListener("dragover", handleDragOver);
+      card.addEventListener("dragleave", handleDragLeave);
+      card.addEventListener("drop", handleDrop);
+      card.addEventListener("dragend", handleDragEnd);
+    } else {
+      card.draggable = false;
+    }
 
     if (note.archived) {
       const badge = document.createElement("span");
@@ -349,6 +469,12 @@ function openModal({ mode, note }) {
     dom.deleteButton.textContent = note.archived ? "Delete forever" : "Archive";
   }
 
+  if (dom.unarchiveButton) {
+    const showUnarchive = mode === "edit" && note.archived;
+    dom.unarchiveButton.hidden = !showUnarchive;
+    dom.unarchiveButton.disabled = !showUnarchive;
+  }
+
   dom.modal.classList.add("is-open");
   document.body.classList.add("modal-open");
   dom.noteTitleInput.focus();
@@ -362,6 +488,10 @@ function closeModal() {
     dom.deleteButton.hidden = true;
     dom.deleteButton.disabled = true;
     dom.deleteButton.textContent = "Archive";
+  }
+  if (dom.unarchiveButton) {
+    dom.unarchiveButton.hidden = true;
+    dom.unarchiveButton.disabled = true;
   }
 }
 
@@ -478,10 +608,59 @@ function sortNotes() {
     if (a.archived !== b.archived) {
       return a.archived ? 1 : -1;
     }
+    if (
+      typeof a.position === "number" &&
+      !Number.isNaN(a.position) &&
+      typeof b.position === "number" &&
+      !Number.isNaN(b.position)
+    ) {
+      return a.position - b.position;
+    }
     const left = a.updatedAt || a.createdAt || 0;
     const right = b.updatedAt || b.createdAt || 0;
     return right - left;
   });
+}
+
+async function handleUnarchive() {
+  if (!state.editing || state.editing.mode !== "edit" || !state.editing.note.archived) {
+    return;
+  }
+
+  const noteId = state.editing.note.id;
+  if (!noteId) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/notes/${noteId}/unarchive`, {
+      method: "POST",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        const payload = await response.json().catch(() => ({}));
+        mergeAuthConfig(payload);
+        await logout({ silent: true });
+        return;
+      }
+      if (response.status === 404) {
+        alert("Note not found.");
+        await loadNotes(state.searchTerm, state.view);
+        closeModal();
+        return;
+      }
+      throw new Error("Failed to unarchive note");
+    }
+
+    await response.json().catch(() => ({}));
+    await loadNotes(state.searchTerm, "active");
+    closeModal();
+  } catch (error) {
+    console.error(error);
+    alert("Could not unarchive the note. Please try again.");
+  }
 }
 
 function showApp() {
