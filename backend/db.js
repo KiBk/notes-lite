@@ -24,6 +24,7 @@ function mapRowToNote(row) {
     body: row.body,
     createdAt,
     updatedAt,
+    archived: Boolean(row.archived),
   };
 }
 
@@ -37,18 +38,26 @@ async function ensureUser(username, displayName = null) {
   );
 }
 
-async function listNotes(username) {
-  const result = await pool.query(
-    `SELECT id,
-            title,
-            body,
-            EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
-            EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
-       FROM notes
-      WHERE username = $1
-      ORDER BY updated_at DESC, created_at DESC`,
-    [username]
-  );
+async function listNotes(username, options = {}) {
+  const { archived } = options;
+  const params = [username];
+  let query = `SELECT id,
+                      title,
+                      body,
+                      archived,
+                      EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+                      EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
+                 FROM notes
+                WHERE username = $1`;
+
+  if (typeof archived === "boolean") {
+    params.push(archived);
+    query += ` AND archived = $${params.length}`;
+  }
+
+  query += " ORDER BY updated_at DESC, created_at DESC";
+
+  const result = await pool.query(query, params);
   return result.rows.map(mapRowToNote);
 }
 
@@ -58,12 +67,13 @@ async function searchNotes(username, query) {
     `SELECT id,
             title,
             body,
+            archived,
             EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
             EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
        FROM notes
       WHERE username = $1
         AND (title ILIKE $2 OR body ILIKE $2)
-      ORDER BY updated_at DESC, created_at DESC`,
+      ORDER BY archived ASC, updated_at DESC, created_at DESC`,
     [username, term]
   );
   return result.rows.map(mapRowToNote);
@@ -76,6 +86,7 @@ async function createNote({ id, username, title, body }) {
      RETURNING id,
                title,
                body,
+               archived,
                EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
     [id, username, title, body]
@@ -94,9 +105,54 @@ async function updateNote({ id, username, title, body }) {
       RETURNING id,
                 title,
                 body,
+                archived,
                 EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
     [title, body, id, username]
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return mapRowToNote(result.rows[0]);
+}
+
+async function archiveNote({ id, username }) {
+  const result = await pool.query(
+    `UPDATE notes
+        SET archived = TRUE,
+            updated_at = NOW()
+      WHERE id = $1
+        AND username = $2
+        AND archived = FALSE
+      RETURNING id,
+                title,
+                body,
+                archived,
+                EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+                EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
+    [id, username]
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return mapRowToNote(result.rows[0]);
+}
+
+async function getNote({ id, username }) {
+  const result = await pool.query(
+    `SELECT id,
+            title,
+            body,
+            archived,
+            EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+            EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
+       FROM notes
+      WHERE id = $1 AND username = $2`,
+    [id, username]
   );
 
   if (result.rowCount === 0) {
@@ -120,5 +176,7 @@ module.exports = {
   searchNotes,
   createNote,
   updateNote,
+  archiveNote,
+  getNote,
   deleteNote,
 };

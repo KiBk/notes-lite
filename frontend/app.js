@@ -17,6 +17,7 @@ const dom = {
   noteBodyInput: document.getElementById("noteBodyInput"),
   oidcButton: document.getElementById("oidcLoginButton"),
   deleteButton: document.getElementById("deleteNoteButton"),
+  viewTabs: Array.from(document.querySelectorAll("[data-view]")),
 };
 
 const state = {
@@ -24,6 +25,7 @@ const state = {
   notes: [],
   editing: null,
   searchTerm: "",
+  view: "active",
 };
 
 const authConfig = {
@@ -36,7 +38,7 @@ dom.loginForm.addEventListener("submit", handleLogin);
 dom.addNoteButton.addEventListener("click", () => {
   openModal({
     mode: "new",
-    note: { id: null, title: "", body: "" },
+    note: { id: null, title: "", body: "", archived: false },
   });
 });
 
@@ -52,6 +54,42 @@ dom.noteForm.addEventListener("submit", handleNoteSubmit);
 dom.oidcButton?.addEventListener("click", handleOidcLogin);
 dom.searchForm?.addEventListener("submit", handleSearchSubmit);
 dom.deleteButton?.addEventListener("click", handleDeleteNote);
+dom.viewTabs?.forEach((button) => {
+  button.addEventListener("click", handleViewChange);
+});
+
+async function handleViewChange(event) {
+  const button = event.currentTarget;
+  if (!button || !button.dataset.view) {
+    return;
+  }
+
+  const nextView = button.dataset.view;
+  if (!nextView) {
+    return;
+  }
+
+  if (state.view !== nextView || state.searchTerm) {
+    state.view = nextView;
+    state.searchTerm = "";
+    if (dom.searchInput) {
+      dom.searchInput.value = "";
+    }
+    await loadNotes("", nextView);
+  }
+}
+
+function updateViewControls() {
+  if (!dom.viewTabs) {
+    return;
+  }
+  dom.viewTabs.forEach((button) => {
+    const view = button.dataset.view;
+    const isActive = state.view === view;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+}
 
 async function loadAuthConfig() {
   try {
@@ -131,7 +169,7 @@ function handleOidcLogin() {
 async function handleSearchSubmit(event) {
   event.preventDefault();
   const term = dom.searchInput ? dom.searchInput.value.trim() : "";
-  await loadNotes(term);
+  await loadNotes(term, state.view);
 }
 
 async function handleLogin(event) {
@@ -171,14 +209,14 @@ async function handleLogin(event) {
     state.currentUser = data.username;
     dom.usernameInput.value = "";
     showApp();
-    await loadNotes("");
+    await loadNotes("", state.view);
   } catch (error) {
     console.error(error);
     alert("Could not log in. Please try again.");
   }
 }
 
-async function loadNotes(searchTerm = state.searchTerm || "") {
+async function loadNotes(searchTerm = state.searchTerm || "", view = state.view) {
   if (!state.currentUser) {
     return;
   }
@@ -189,9 +227,24 @@ async function loadNotes(searchTerm = state.searchTerm || "") {
     dom.searchInput.value = query;
   }
 
+  const targetView = view || state.view || "active";
+  if (!query) {
+    state.view = targetView;
+  }
+
+  updateViewControls();
+
   let url = "/api/notes";
+  const params = new URLSearchParams();
   if (query) {
-    url += `?q=${encodeURIComponent(query)}`;
+    params.set("q", query);
+  } else if (targetView === "archived") {
+    params.set("folder", "archived");
+  }
+
+  const qs = params.toString();
+  if (qs) {
+    url += `?${qs}`;
   }
 
   try {
@@ -210,9 +263,12 @@ async function loadNotes(searchTerm = state.searchTerm || "") {
     }
 
     const data = await response.json();
-    state.notes = data.notes || [];
+    state.notes = Array.isArray(data.notes)
+      ? data.notes.map((note) => ({ ...note, archived: Boolean(note.archived) }))
+      : [];
     sortNotes();
     renderNotes();
+    updateViewControls();
   } catch (error) {
     console.error(error);
     alert("Could not load notes. Please try again.");
@@ -225,7 +281,13 @@ function renderNotes() {
   if (!state.notes.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "No notes yet. Hit the plus to start one.";
+    if (state.searchTerm) {
+      empty.textContent = "No notes match your search.";
+    } else if (state.view === "archived") {
+      empty.textContent = "Archived notes will appear here.";
+    } else {
+      empty.textContent = "No notes yet. Hit the plus to start one.";
+    }
     dom.notesContainer.appendChild(empty);
     return;
   }
@@ -233,7 +295,17 @@ function renderNotes() {
   state.notes.forEach((note) => {
     const card = document.createElement("article");
     card.className = "note-card";
+    if (note.archived) {
+      card.classList.add("note-card--archived");
+    }
     card.tabIndex = 0;
+
+    if (note.archived) {
+      const badge = document.createElement("span");
+      badge.className = "note-card__badge";
+      badge.textContent = "Archived";
+      card.append(badge);
+    }
 
     const titleEl = document.createElement("h3");
     titleEl.className = "note-card__title";
@@ -274,6 +346,7 @@ function openModal({ mode, note }) {
     const showDelete = mode === "edit";
     dom.deleteButton.hidden = !showDelete;
     dom.deleteButton.disabled = !showDelete;
+    dom.deleteButton.textContent = note.archived ? "Delete forever" : "Archive";
   }
 
   dom.modal.classList.add("is-open");
@@ -288,6 +361,7 @@ function closeModal() {
   if (dom.deleteButton) {
     dom.deleteButton.hidden = true;
     dom.deleteButton.disabled = true;
+    dom.deleteButton.textContent = "Archive";
   }
 }
 
@@ -330,7 +404,7 @@ async function handleNoteSubmit(event) {
     }
 
     await response.json();
-    await loadNotes(state.searchTerm);
+    await loadNotes(state.searchTerm, state.view);
     closeModal();
   } catch (error) {
     console.error(error);
@@ -348,7 +422,10 @@ async function handleDeleteNote() {
     return;
   }
 
-  const shouldDelete = window.confirm("Delete this note?");
+  const promptMessage = state.editing.note.archived
+    ? "Delete this note permanently?"
+    : "Archive this note?";
+  const shouldDelete = window.confirm(promptMessage);
   if (!shouldDelete) {
     return;
   }
@@ -359,8 +436,15 @@ async function handleDeleteNote() {
       credentials: "include",
     });
 
+    if (response.status === 200) {
+      await response.json().catch(() => ({}));
+      await loadNotes(state.searchTerm, state.view);
+      closeModal();
+      return;
+    }
+
     if (response.status === 204) {
-      await loadNotes(state.searchTerm);
+      await loadNotes(state.searchTerm, state.view);
       closeModal();
       return;
     }
@@ -391,6 +475,9 @@ async function handleDeleteNote() {
 
 function sortNotes() {
   state.notes.sort((a, b) => {
+    if (a.archived !== b.archived) {
+      return a.archived ? 1 : -1;
+    }
     const left = a.updatedAt || a.createdAt || 0;
     const right = b.updatedAt || b.createdAt || 0;
     return right - left;
@@ -406,6 +493,8 @@ function hideApp() {
   dom.loginPanel.classList.remove("is-hidden");
   dom.app.classList.remove("is-visible");
   dom.notesContainer.innerHTML = "";
+  state.view = "active";
+  updateViewControls();
 }
 
 async function restoreSession() {
@@ -427,7 +516,7 @@ async function restoreSession() {
 
     state.currentUser = data.username;
     showApp();
-    await loadNotes();
+    await loadNotes("", state.view);
   } catch (error) {
     console.error(error);
   }
@@ -448,6 +537,7 @@ async function logout(options = {}) {
   state.currentUser = null;
   state.notes = [];
   state.searchTerm = "";
+  state.view = "active";
   hideApp();
   if (dom.searchInput) {
     dom.searchInput.value = "";
@@ -462,4 +552,5 @@ window.notesLite = {
 (async function init() {
   await loadAuthConfig();
   await restoreSession();
+  updateViewControls();
 })();

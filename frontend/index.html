@@ -9,7 +9,13 @@
 <body>
   <div class="app">
     <header class="app__header">
-      <h1 class="app__brand">Notes Lite</h1>
+      <div class="app__header-left">
+        <h1 class="app__brand">Notes Lite</h1>
+        <nav class="app__tabs" role="tablist">
+          <button type="button" class="app__tab is-active" data-view="active" aria-pressed="true">Notes</button>
+          <button type="button" class="app__tab" data-view="archived" aria-pressed="false">Archived</button>
+        </nav>
+      </div>
       <form id="searchForm" class="app__search" role="search">
         <label class="sr-only" for="searchInput">Search notes</label>
         <input

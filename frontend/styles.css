@@ -43,6 +43,43 @@ body.modal-open {
   gap: 16px;
 }
 
+.app__header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.app__tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(37, 99, 235, 0.08);
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.app__tab {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.app__tab.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.app__tab:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 2px;
+}
+
 .app__search {
   flex: 1;
   display: flex;
@@ -116,6 +153,24 @@ body.modal-open {
 .note-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.note-card--archived {
+  border-style: dashed;
+  opacity: 0.9;
+}
+
+.note-card__badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(107, 114, 128, 0.16);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
 .note-card__title {
@@ -346,6 +401,14 @@ body.modal-open {
 
   .app__header {
     flex-wrap: wrap;
+  }
+
+  .app__header-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .app__header {
     gap: 12px;
   }
 

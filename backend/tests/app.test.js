@@ -14,6 +14,19 @@ function createStubDb() {
     return notes.get(username);
   }
 
+  function copyNote(note) {
+    return { ...note };
+  }
+
+  function sortNotesCollection(items) {
+    return [...items].sort((a, b) => {
+      if (a.archived !== b.archived) {
+        return a.archived ? 1 : -1;
+      }
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+  }
+
   return {
     async ensureUser(username, displayName = null) {
       if (!username) {
@@ -27,19 +40,23 @@ function createStubDb() {
       getUserNotes(username);
     },
 
-    async listNotes(username) {
-      return getUserNotes(username).map((note) => ({ ...note }));
+    async listNotes(username, options = {}) {
+      const { archived } = options;
+      let items = getUserNotes(username);
+      if (typeof archived === "boolean") {
+        items = items.filter((note) => note.archived === archived);
+      }
+      return sortNotesCollection(items).map(copyNote);
     },
 
     async searchNotes(username, query) {
       const needle = query.toLowerCase();
-      return getUserNotes(username)
-        .filter((note) => {
-          const title = (note.title || "").toLowerCase();
-          const body = (note.body || "").toLowerCase();
-          return title.includes(needle) || body.includes(needle);
-        })
-        .map((note) => ({ ...note }));
+      const matched = getUserNotes(username).filter((note) => {
+        const title = (note.title || "").toLowerCase();
+        const body = (note.body || "").toLowerCase();
+        return title.includes(needle) || body.includes(needle);
+      });
+      return sortNotesCollection(matched).map(copyNote);
     },
 
     async createNote({ id, username, title, body }) {
@@ -50,9 +67,10 @@ function createStubDb() {
         body,
         createdAt: now,
         updatedAt: now,
+        archived: false,
       };
-      getUserNotes(username).push({ ...note });
-      return { ...note };
+      getUserNotes(username).push(copyNote(note));
+      return copyNote(note);
     },
 
     async updateNote({ id, username, title, body }) {
@@ -70,6 +88,28 @@ function createStubDb() {
       };
       items[index] = { ...updated };
       return { ...updated };
+    },
+
+    async archiveNote({ id, username }) {
+      const items = getUserNotes(username);
+      const index = items.findIndex((note) => note.id === id && note.archived === false);
+      if (index === -1) {
+        return null;
+      }
+      const now = Date.now();
+      const archivedNote = {
+        ...items[index],
+        archived: true,
+        updatedAt: now,
+      };
+      items[index] = { ...archivedNote };
+      return copyNote(archivedNote);
+    },
+
+    async getNote({ id, username }) {
+      const items = getUserNotes(username);
+      const found = items.find((note) => note.id === id);
+      return found ? copyNote(found) : null;
     },
 
     async deleteNote({ id, username }) {
@@ -165,8 +205,11 @@ test("search endpoint filters notes by query", async () => {
   const agent = request.agent(app);
 
   await agent.post("/api/session").send({ username: "dave" }).expect(200);
-  await agent.post("/api/notes").send({ title: "Groceries", body: "Buy milk" }).expect(201);
   await agent
+    .post("/api/notes")
+    .send({ title: "Groceries", body: "Buy milk" })
+    .expect(201);
+  const workoutRes = await agent
     .post("/api/notes")
     .send({ title: "Workout", body: "Leg day" })
     .expect(201);
@@ -174,12 +217,24 @@ test("search endpoint filters notes by query", async () => {
   const searchRes = await agent.get("/api/notes?q=milk").expect(200);
   assert.equal(searchRes.body.notes.length, 1);
   assert.equal(searchRes.body.notes[0].title, "Groceries");
+  assert.equal(searchRes.body.notes[0].archived, false);
+
+  await agent.delete(`/api/notes/${workoutRes.body.note.id}`).expect(200);
+
+  const broadSearch = await agent.get("/api/notes?q=o").expect(200);
+  assert.equal(broadSearch.body.notes.length, 2);
+  assert.equal(broadSearch.body.notes[0].archived, false);
+  assert.equal(broadSearch.body.notes[1].archived, true);
+  assert.deepEqual(
+    broadSearch.body.notes.map((note) => note.title),
+    ["Groceries", "Workout"]
+  );
 
   const emptyRes = await agent.get("/api/notes?q=xyz").expect(200);
   assert.equal(emptyRes.body.notes.length, 0);
 });
 
-test("delete endpoint removes a note", async () => {
+test("delete endpoint archives then removes a note", async () => {
   const app = createApp({
     db: createStubDb(),
     config: { enableDevLogin: true, devAutoLoginUsername: null, cookieSecure: false },
@@ -193,12 +248,20 @@ test("delete endpoint removes a note", async () => {
     .expect(201);
   const noteId = createRes.body.note.id;
 
+  const archiveRes = await agent.delete(`/api/notes/${noteId}`).expect(200);
+  assert.equal(archiveRes.body.note.archived, true);
+
+  const archivedList = await agent.get("/api/notes?folder=archived").expect(200);
+  assert.equal(archivedList.body.notes.length, 1);
+  assert.equal(archivedList.body.notes[0].archived, true);
+
+  const afterArchiveActive = await agent.get("/api/notes").expect(200);
+  assert.equal(afterArchiveActive.body.notes.length, 0);
+
   await agent.delete(`/api/notes/${noteId}`).expect(204);
 
-  const afterDelete = await agent.get("/api/notes").expect(200);
-  assert.equal(afterDelete.body.notes.length, 0);
-
-  await agent.delete(`/api/notes/${noteId}`).expect(404);
+  const archivedAfterDelete = await agent.get("/api/notes?folder=archived").expect(200);
+  assert.equal(archivedAfterDelete.body.notes.length, 0);
 });
 
 test("oidc login flow issues session cookie via adapter", async () => {

@@ -290,6 +290,7 @@ function createApp({ db, config = {} }) {
   app.get("/api/notes", requireUser, async (req, res) => {
     try {
       const searchTerm = sanitizeText(req.query?.q || "");
+      const folder = sanitizeText(req.query?.folder || "").toLowerCase();
       let notes;
       if (searchTerm) {
         if (typeof db.searchNotes === "function") {
@@ -304,7 +305,8 @@ function createApp({ db, config = {} }) {
           });
         }
       } else {
-        notes = await db.listNotes(req.username);
+        const archived = folder === "archived";
+        notes = await db.listNotes(req.username, { archived });
       }
       res.json({ notes });
     } catch (error) {
@@ -365,6 +367,26 @@ function createApp({ db, config = {} }) {
   app.delete("/api/notes/:id", requireUser, async (req, res) => {
     const noteId = req.params.id;
     try {
+      if (typeof db.getNote !== "function") {
+        return res.status(501).json({ error: "NOTE_LOOKUP_NOT_SUPPORTED" });
+      }
+
+      const existing = await db.getNote({ id: noteId, username: req.username });
+      if (!existing) {
+        return res.status(404).json({ error: "NOTE_NOT_FOUND" });
+      }
+
+      if (!existing.archived) {
+        if (typeof db.archiveNote !== "function") {
+          return res.status(501).json({ error: "ARCHIVE_NOT_SUPPORTED" });
+        }
+        const archivedNote = await db.archiveNote({ id: noteId, username: req.username });
+        if (!archivedNote) {
+          return res.status(404).json({ error: "NOTE_NOT_FOUND" });
+        }
+        return res.status(200).json({ note: archivedNote });
+      }
+
       if (typeof db.deleteNote !== "function") {
         return res.status(501).json({ error: "DELETE_NOT_SUPPORTED" });
       }
