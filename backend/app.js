@@ -130,6 +130,22 @@ function createApp({ db, config = {} }) {
     next();
   });
 
+  function log(message, metadata = {}) {
+    const payload = { ...metadata };
+    console.log(message, payload);
+  }
+
+  function logError(message, error, context = {}) {
+    const payload = { ...context };
+    if (error instanceof Error) {
+      payload.error = error.stack || error.message;
+    } else {
+      payload.error = error;
+    }
+    const level = isProduction ? console.error : console.warn;
+    level.call(console, message, payload);
+  }
+
   function sanitizeText(value) {
     return typeof value === "string" ? value.trim() : "";
   }
@@ -191,7 +207,7 @@ function createApp({ db, config = {} }) {
         });
         res.redirect(authorizationUrl);
       } catch (error) {
-        console.error("OIDC login failed", error);
+        logError("OIDC login failed", error, { username: req.username });
         res.status(500).send("OIDC login failed");
       }
     });
@@ -231,7 +247,7 @@ function createApp({ db, config = {} }) {
         setSessionCookie(res, username);
         res.redirect("/");
       } catch (error) {
-        console.error("OIDC callback failed", error);
+        logError("OIDC callback failed", error, { username: req.username });
         res.status(500).send("OIDC callback failed");
       }
     });
@@ -257,7 +273,7 @@ function createApp({ db, config = {} }) {
       setSessionCookie(res, username);
       res.json({ username });
     } catch (error) {
-      console.error("Failed to create session", error);
+      logError("Failed to create session", error, { username });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
@@ -271,12 +287,19 @@ function createApp({ db, config = {} }) {
         setSessionCookie(res, devAutoLoginUsername);
         username = devAutoLoginUsername;
       } catch (error) {
-        console.error("Failed to materialize dev session", error);
+        logError("Failed to materialize dev session", error, { devAutoLoginUsername });
       }
     }
 
     if (!username) {
       return sendUnauthenticated(res);
+    }
+
+    try {
+      await db.ensureUser(username);
+    } catch (error) {
+      logError("Failed to ensure user during session check", error, { username });
+      return res.status(500).json({ error: "INTERNAL_ERROR" });
     }
 
     res.json({ username, authMode });
@@ -310,7 +333,7 @@ function createApp({ db, config = {} }) {
       }
       res.json({ notes });
     } catch (error) {
-      console.error("Failed to fetch notes", error);
+      logError("Failed to fetch notes", error, { username: req.username, query: req.query });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
@@ -333,7 +356,7 @@ function createApp({ db, config = {} }) {
       const saved = await db.createNote({ ...note, username: req.username });
       res.status(201).json({ note: saved });
     } catch (error) {
-      console.error("Failed to create note", error);
+      logError("Failed to create note", error, { username: req.username });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
@@ -359,33 +382,113 @@ function createApp({ db, config = {} }) {
       }
       res.json({ note: updated });
     } catch (error) {
-      console.error("Failed to update note", error);
+      logError("Failed to update note", error, { username: req.username, noteId });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
 
   app.put("/api/notes/order", requireUser, async (req, res) => {
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : null;
-    if (!ids || !ids.length) {
-      return res.status(400).json({ error: "IDS_REQUIRED" });
-    }
-
-    const folder = sanitizeText(req.body?.folder || "active");
-    const archived = folder === "archived";
-
     if (typeof db.reorderNotes !== "function") {
       return res.status(501).json({ error: "REORDER_NOT_SUPPORTED" });
+    }
+
+    const folder = sanitizeText(req.body?.folder || "active").toLowerCase();
+    const archived = folder === "archived";
+
+    let reorderPayload;
+    if (!isProduction) {
+      log("Reorder raw payload", {
+        username: req.username,
+        archived,
+        body: req.body,
+      });
+    }
+
+    if (archived) {
+      const ids = Array.isArray(req.body?.ids)
+        ? req.body.ids.map(String)
+        : Array.isArray(req.body?.unpinnedIds)
+        ? req.body.unpinnedIds.map(String)
+        : [];
+      if (!ids.length && !isProduction) {
+        log("Reorder archived skipped: no ids", { username: req.username });
+      }
+      reorderPayload = { ids };
+    } else {
+      const pinnedIds = Array.isArray(req.body?.pinnedIds)
+        ? req.body.pinnedIds.map(String)
+        : [];
+      const unpinnedIdsInput = Array.isArray(req.body?.unpinnedIds)
+        ? req.body.unpinnedIds.map(String)
+        : null;
+      const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+
+      const pinnedSet = new Set(pinnedIds);
+      const unpinnedIds = unpinnedIdsInput
+        ? unpinnedIdsInput
+        : ids.filter((id) => !pinnedSet.has(id));
+
+      if (!pinnedIds.length && !unpinnedIds.length) {
+        if (!isProduction) {
+          log("Reorder active skipped: no ids", { username: req.username });
+        }
+        reorderPayload = { pinnedIds: [], unpinnedIds: [] };
+      } else {
+        reorderPayload = { pinnedIds, unpinnedIds };
+      }
+    }
+
+    if (!isProduction) {
+      log("Reorder request", {
+        username: req.username,
+        archived,
+        payload: reorderPayload,
+      });
+    }
+
+    if (!archived && !reorderPayload.pinnedIds.length && !reorderPayload.unpinnedIds.length) {
+      const notes = await db.listNotes(req.username, { archived: false });
+      return res.json({ notes });
+    }
+
+    if (archived && Array.isArray(reorderPayload.ids) && !reorderPayload.ids.length) {
+      const notes = await db.listNotes(req.username, { archived: true });
+      return res.json({ notes });
     }
 
     try {
       const notes = await db.reorderNotes({
         username: req.username,
-        ids,
         archived,
+        ...reorderPayload,
       });
       res.json({ notes });
     } catch (error) {
-      console.error("Failed to reorder notes", error);
+      logError("Failed to reorder notes", error, {
+        username: req.username,
+        archived,
+        payload: reorderPayload,
+      });
+      res.status(500).json({ error: "INTERNAL_ERROR" });
+    }
+  });
+
+  app.post("/api/notes/:id/pin", requireUser, async (req, res) => {
+    if (typeof db.pinNote !== "function") {
+      return res.status(501).json({ error: "PIN_NOT_SUPPORTED" });
+    }
+
+    const noteId = req.params.id;
+    const pinned = Boolean(req.body?.pinned);
+
+    try {
+      const note = await db.pinNote({ id: noteId, username: req.username, pinned });
+      if (!note) {
+        return res.status(404).json({ error: "NOTE_NOT_FOUND" });
+      }
+      res.json({ note });
+    } catch (error) {
+      logError("Failed to update pin state", error, { username: req.username, noteId, pinned });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
@@ -424,7 +527,7 @@ function createApp({ db, config = {} }) {
 
       res.status(204).end();
     } catch (error) {
-      console.error("Failed to delete note", error);
+      logError("Failed to delete note", error, { username: req.username, noteId });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });
@@ -443,7 +546,7 @@ function createApp({ db, config = {} }) {
 
       res.json({ note });
     } catch (error) {
-      console.error("Failed to unarchive note", error);
+      logError("Failed to unarchive note", error, { username: req.username, noteId });
       res.status(500).json({ error: "INTERNAL_ERROR" });
     }
   });

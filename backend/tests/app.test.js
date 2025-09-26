@@ -23,6 +23,9 @@ function createStubDb() {
       if (a.archived !== b.archived) {
         return a.archived ? 1 : -1;
       }
+      if (a.pinned !== b.pinned) {
+        return a.pinned ? -1 : 1;
+      }
       if (a.position !== b.position) {
         return a.position - b.position;
       }
@@ -71,6 +74,7 @@ function createStubDb() {
         createdAt: now,
         updatedAt: now,
         archived: false,
+        pinned: false,
         position:
           getUserNotes(username)
             .filter((item) => !item.archived)
@@ -107,6 +111,7 @@ function createStubDb() {
       const archivedNote = {
         ...items[index],
         archived: true,
+        pinned: false,
         updatedAt: now,
         position:
           items
@@ -136,6 +141,7 @@ function createStubDb() {
       const note = {
         ...items[index],
         archived: false,
+        pinned: false,
         position: activePosition + 1,
         updatedAt: now,
       };
@@ -153,17 +159,64 @@ function createStubDb() {
       return true;
     },
 
-    async reorderNotes({ username, ids, archived }) {
+    async pinNote({ id, username, pinned }) {
       const items = getUserNotes(username);
-      let position = 1;
-      ids.forEach((id) => {
-        const target = items.find((note) => note.id === id && note.archived === archived);
-        if (target) {
-          target.position = position;
-          target.updatedAt = Date.now();
-          position += 1;
-        }
-      });
+      const note = items.find((item) => item.id === id && !item.archived);
+      if (!note) {
+        return null;
+      }
+      note.pinned = Boolean(pinned);
+      note.updatedAt = Date.now();
+      if (note.pinned) {
+        note.position = items
+          .filter((item) => item.pinned && !item.archived)
+          .reduce((max, item) => Math.max(max, item.position || 0), 0) + 1;
+      } else {
+        note.position = items
+          .filter((item) => !item.pinned && !item.archived)
+          .reduce((max, item) => Math.max(max, item.position || 0), 0) + 1;
+      }
+      return copyNote(note);
+    },
+
+    async reorderNotes({ username, archived, pinnedIds = [], unpinnedIds = [], ids }) {
+      const items = getUserNotes(username);
+      const now = Date.now();
+
+      if (archived) {
+        const order = Array.isArray(ids) && ids.length ? ids : Array.isArray(unpinnedIds) ? unpinnedIds : [];
+        let position = 1;
+        order.forEach((id) => {
+          const target = items.find((note) => note.id === id && note.archived === archived);
+          if (target) {
+            target.position = position;
+            target.updatedAt = now;
+            position += 1;
+          }
+        });
+      } else {
+        let position = 1;
+        pinnedIds.forEach((id) => {
+          const target = items.find((note) => note.id === id && !note.archived);
+          if (target) {
+            target.pinned = true;
+            target.position = position;
+            target.updatedAt = now;
+            position += 1;
+          }
+        });
+
+        position = 1;
+        unpinnedIds.forEach((id) => {
+          const target = items.find((note) => note.id === id && !note.archived);
+          if (target) {
+            target.pinned = false;
+            target.position = position;
+            target.updatedAt = now;
+            position += 1;
+          }
+        });
+      }
 
       return sortNotesCollection(items.filter((note) => note.archived === archived)).map(copyNote);
     },
@@ -336,7 +389,7 @@ test("reorder endpoint updates note ordering", async () => {
 
   const reorderRes = await agent
     .put("/api/notes/order")
-    .send({ ids: [third.body.note.id, first.body.note.id, second.body.note.id], folder: "active" })
+    .send({ pinnedIds: [], unpinnedIds: [third.body.note.id, first.body.note.id, second.body.note.id], folder: "active" })
     .expect(200);
   assert.deepEqual(reorderRes.body.notes.map((n) => n.title), ["Third", "First", "Second"]);
 
@@ -366,6 +419,43 @@ test("reorder endpoint updates note ordering", async () => {
 
   const afterUnarchiveActive = await agent.get("/api/notes").expect(200);
   assert.equal(afterUnarchiveActive.body.notes.slice(-1)[0].title, "Third");
+});
+
+test("pin endpoint toggles pinned state", async () => {
+  const app = createApp({
+    db: createStubDb(),
+    config: { enableDevLogin: true, devAutoLoginUsername: null, cookieSecure: false },
+  });
+  const agent = request.agent(app);
+
+  await agent.post("/api/session").send({ username: "gina" }).expect(200);
+  const first = await agent
+    .post("/api/notes")
+    .send({ title: "Alpha", body: "A" })
+    .expect(201);
+  const second = await agent
+    .post("/api/notes")
+    .send({ title: "Beta", body: "B" })
+    .expect(201);
+
+  await agent
+    .post(`/api/notes/${first.body.note.id}/pin`)
+    .send({ pinned: true })
+    .expect(200);
+
+  const afterPin = await agent.get("/api/notes").expect(200);
+  assert.deepEqual(afterPin.body.notes.map((n) => ({ title: n.title, pinned: n.pinned })), [
+    { title: "Alpha", pinned: true },
+    { title: "Beta", pinned: false },
+  ]);
+
+  await agent
+    .post(`/api/notes/${first.body.note.id}/pin`)
+    .send({ pinned: false })
+    .expect(200);
+
+  const afterUnpin = await agent.get("/api/notes").expect(200);
+  assert.deepEqual(afterUnpin.body.notes.map((n) => n.pinned), [false, false]);
 });
 
 test("oidc login flow issues session cookie via adapter", async () => {

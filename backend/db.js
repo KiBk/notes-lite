@@ -25,6 +25,7 @@ function mapRowToNote(row) {
     createdAt,
     updatedAt,
     archived: Boolean(row.archived),
+    pinned: Boolean(row.pinned),
     position: typeof row.position === "number" ? row.position : Number(row.position || 0),
   };
 }
@@ -46,6 +47,7 @@ async function listNotes(username, options = {}) {
                       title,
                       body,
                       archived,
+                      pinned,
                       position,
                       EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                       EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
@@ -70,6 +72,7 @@ async function searchNotes(username, query) {
             title,
             body,
             archived,
+            pinned,
             position,
             EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
             EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
@@ -82,18 +85,23 @@ async function searchNotes(username, query) {
   return result.rows.map(mapRowToNote);
 }
 
-async function nextPosition(username, archived) {
-  const result = await pool.query(
-    `SELECT COALESCE(MAX(position), 0) + 1 AS next
-       FROM notes
-      WHERE username = $1 AND archived = $2`,
-    [username, archived]
-  );
+async function nextPosition({ username, archived, pinned }) {
+  const params = [username, archived];
+  let query = `SELECT COALESCE(MAX(position), 0) + 1 AS next
+                 FROM notes
+                WHERE username = $1 AND archived = $2`;
+
+  if (typeof pinned === "boolean") {
+    params.push(pinned);
+    query += ` AND pinned = $${params.length}`;
+  }
+
+  const result = await pool.query(query, params);
   return Number(result.rows[0]?.next || 1);
 }
 
 async function createNote({ id, username, title, body }) {
-  const position = await nextPosition(username, false);
+  const position = await nextPosition({ username, archived: false, pinned: false });
   const result = await pool.query(
     `INSERT INTO notes (id, username, title, body, position)
      VALUES ($1, $2, $3, $4, $5)
@@ -101,6 +109,7 @@ async function createNote({ id, username, title, body }) {
                title,
                body,
                archived,
+               pinned,
                position,
                EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
@@ -121,6 +130,7 @@ async function updateNote({ id, username, title, body }) {
                 title,
                 body,
                 archived,
+                pinned,
                 position,
                 EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
@@ -135,10 +145,11 @@ async function updateNote({ id, username, title, body }) {
 }
 
 async function archiveNote({ id, username }) {
-  const position = await nextPosition(username, true);
+  const position = await nextPosition({ username, archived: true, pinned: false });
   const result = await pool.query(
     `UPDATE notes
         SET archived = TRUE,
+            pinned = FALSE,
             position = $3,
             updated_at = NOW()
       WHERE id = $1
@@ -148,6 +159,7 @@ async function archiveNote({ id, username }) {
                 title,
                 body,
                 archived,
+                pinned,
                 position,
                 EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
@@ -167,6 +179,7 @@ async function getNote({ id, username }) {
             title,
             body,
             archived,
+            pinned,
             position,
             EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
             EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
@@ -183,10 +196,11 @@ async function getNote({ id, username }) {
 }
 
 async function unarchiveNote({ id, username }) {
-  const position = await nextPosition(username, false);
+  const position = await nextPosition({ username, archived: false, pinned: false });
   const result = await pool.query(
     `UPDATE notes
         SET archived = FALSE,
+            pinned = FALSE,
             position = $3,
             updated_at = NOW()
       WHERE id = $1
@@ -196,6 +210,7 @@ async function unarchiveNote({ id, username }) {
                 title,
                 body,
                 archived,
+                pinned,
                 position,
                 EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
@@ -217,24 +232,108 @@ async function deleteNote({ id, username }) {
   return result.rowCount > 0;
 }
 
-async function reorderNotes({ username, ids, archived }) {
-  if (!Array.isArray(ids) || !ids.length) {
-    return [];
+async function pinNote({ id, username, pinned }) {
+  const note = await getNote({ id, username });
+  if (!note || note.archived) {
+    return null;
   }
 
+  if (pinned) {
+    const position = await nextPosition({ username, archived: false, pinned: true });
+    const result = await pool.query(
+      `UPDATE notes
+          SET pinned = TRUE,
+              position = $3,
+              updated_at = NOW()
+        WHERE id = $1
+          AND username = $2
+        RETURNING id,
+                  title,
+                  body,
+                  archived,
+                  pinned,
+                  position,
+                  EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+                  EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
+      [id, username, position]
+    );
+    return result.rowCount ? mapRowToNote(result.rows[0]) : null;
+  }
+
+  const position = await nextPosition({ username, archived: false, pinned: false });
+  const result = await pool.query(
+    `UPDATE notes
+        SET pinned = FALSE,
+            position = $3,
+            updated_at = NOW()
+      WHERE id = $1
+        AND username = $2
+      RETURNING id,
+                title,
+                body,
+                archived,
+                pinned,
+                position,
+                EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
+                EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"`,
+    [id, username, position]
+  );
+  return result.rowCount ? mapRowToNote(result.rows[0]) : null;
+}
+
+async function reorderNotes({ username, archived, pinnedIds = [], unpinnedIds = [], ids }) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    let position = 1;
-    for (const id of ids) {
-      await client.query(
-        `UPDATE notes
-            SET position = $1,
-                updated_at = NOW()
-          WHERE id = $2 AND username = $3 AND archived = $4`,
-        [position, id, username, archived]
-      );
-      position += 1;
+
+    if (archived) {
+      const orderIds = Array.isArray(ids) && ids.length ? ids : Array.isArray(unpinnedIds) ? unpinnedIds : [];
+      if (!orderIds.length) {
+        await client.query("ROLLBACK");
+        return [];
+      }
+
+      let position = 1;
+      for (const id of orderIds) {
+        await client.query(
+          `UPDATE notes
+              SET position = $1,
+                  updated_at = NOW()
+            WHERE id = $2 AND username = $3 AND archived = TRUE`,
+          [position, id, username]
+        );
+        position += 1;
+      }
+    } else {
+      if (!Array.isArray(pinnedIds) || !Array.isArray(unpinnedIds)) {
+        throw new Error("Pinned and unpinned ids are required for active reorder");
+      }
+
+      let position = 1;
+      for (const id of pinnedIds) {
+        await client.query(
+          `UPDATE notes
+              SET pinned = TRUE,
+                  position = $1,
+                  updated_at = NOW()
+            WHERE id = $2 AND username = $3 AND archived = FALSE`,
+          [position, id, username]
+        );
+        position += 1;
+      }
+
+      position = 1;
+      for (const id of unpinnedIds) {
+        await client.query(
+          `UPDATE notes
+              SET pinned = FALSE,
+                  position = $1,
+                  updated_at = NOW()
+            WHERE id = $2 AND username = $3 AND archived = FALSE`,
+          [position, id, username]
+        );
+        position += 1;
+      }
     }
 
     const result = await client.query(
@@ -242,12 +341,13 @@ async function reorderNotes({ username, ids, archived }) {
               title,
               body,
               archived,
+              pinned,
               position,
               EXTRACT(EPOCH FROM created_at) * 1000 AS "createdAt",
               EXTRACT(EPOCH FROM updated_at) * 1000 AS "updatedAt"
          FROM notes
         WHERE username = $1 AND archived = $2
-        ORDER BY position ASC, updated_at DESC`,
+        ORDER BY pinned DESC, position ASC, updated_at DESC`,
       [username, archived]
     );
 
@@ -270,6 +370,7 @@ module.exports = {
   archiveNote,
   getNote,
   unarchiveNote,
+  pinNote,
   deleteNote,
   reorderNotes,
 };

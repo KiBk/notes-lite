@@ -21,6 +21,7 @@ Data lives in the bundled PostgreSQL container. A named volume (`db-data`) keeps
 - Switch between active and archived notes via the header tabs
 - Notes can be archived from the modal editor; deleting from the archive removes them permanently
 - Archived notes can be restored back to the active list via the modal button
+- Hover any active note to pin/unpin it without opening the modal; pinned notes stay in a dedicated row
 - Drag and drop notes (within active or archived tabs) to change their order; search temporarily disables dragging
 - All API calls go to relative `/api/*` paths (proxied by nginx in Docker)
 
@@ -38,6 +39,7 @@ Data lives in the bundled PostgreSQL container. A named volume (`db-data`) keeps
   - `DELETE /api/notes/:id` — delete a note
     - When invoked on an active note it is archived; deleting an already-archived note removes it permanently
   - `POST /api/notes/:id/unarchive` — move an archived note back to the active list
+  - `POST /api/notes/:id/pin` — toggle the pinned state for a note (active tab only)
   - `PUT /api/notes/order` — reorder notes within the active or archived tab
 
 Run the API locally (without Docker):

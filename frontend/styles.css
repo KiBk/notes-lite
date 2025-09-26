@@ -132,9 +132,29 @@ body.modal-open {
 
 .app__content {
   margin-top: 32px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 20px;
+  display: block;
+}
+
+.notes-section {
+  margin-bottom: 32px;
+}
+
+.notes-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.notes-section__title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.notes-grid {
+  column-width: 240px;
+  column-gap: 20px;
 }
 
 .note-card {
@@ -148,6 +168,9 @@ body.modal-open {
   box-shadow: var(--shadow);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  break-inside: avoid;
+  margin-bottom: 20px;
 }
 
 .note-card:hover {
@@ -183,6 +206,49 @@ body.modal-open {
   text-transform: uppercase;
 }
 
+.note-card__pin {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  cursor: pointer;
+}
+
+.note-card:hover .note-card__pin,
+.note-card:focus-within .note-card__pin {
+  opacity: 1;
+}
+
+.note-card__pin[aria-pressed="true"] {
+  background: rgba(37, 99, 235, 0.16);
+  color: var(--primary);
+}
+
+.note-card--truncated .note-card__body {
+  -webkit-line-clamp: 12;
+  max-height: 18rem;
+}
+
+.note-card--truncated::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  border-radius: 16px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, var(--surface) 88%);
+}
+
 .note-card__title {
   margin: 0;
   font-size: 18px;
@@ -196,6 +262,10 @@ body.modal-open {
   white-space: pre-line;
   word-break: break-word;
   flex: 1;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
 }
 
 .login {
@@ -455,5 +525,10 @@ body.modal-open {
   .app__add-note {
     width: 44px;
     height: 44px;
+  }
+
+  .notes-grid {
+    column-width: 180px;
+    column-gap: 16px;
   }
 }

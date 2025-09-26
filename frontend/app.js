@@ -37,17 +37,29 @@ const authConfig = {
 
 const dragState = {
   fromIndex: null,
+  fromSection: null,
 };
 
 function canDrag() {
   return !state.searchTerm;
 }
 
+function shouldTruncate(note) {
+  const body = note.body || "";
+  if (!body) {
+    return false;
+  }
+  const maxChars = 900;
+  const maxLines = 18;
+  const lineCount = body.split(/\n/).length;
+  return body.length > maxChars || lineCount > maxLines;
+}
+
 dom.loginForm.addEventListener("submit", handleLogin);
 dom.addNoteButton.addEventListener("click", () => {
   openModal({
     mode: "new",
-    note: { id: null, title: "", body: "", archived: false },
+    note: { id: null, title: "", body: "", archived: false, pinned: false },
   });
 });
 
@@ -111,6 +123,7 @@ function handleDragStart(event) {
     return;
   }
   dragState.fromIndex = index;
+  dragState.fromSection = event.currentTarget.dataset.section || null;
   event.dataTransfer.effectAllowed = "move";
   event.dataTransfer.setData("text/plain", "");
   event.currentTarget.classList.add("is-dragging");
@@ -133,6 +146,7 @@ function handleDragEnd(event) {
   event.currentTarget.classList.remove("is-dragging");
   event.currentTarget.classList.remove("is-drop-target");
   dragState.fromIndex = null;
+  dragState.fromSection = null;
 }
 
 async function handleDrop(event) {
@@ -144,21 +158,41 @@ async function handleDrop(event) {
 
   const toIndex = Number(event.currentTarget.dataset.index);
   const fromIndex = dragState.fromIndex;
+  const toSection = event.currentTarget.dataset.section || null;
+  const fromSection = dragState.fromSection;
   dragState.fromIndex = null;
+  dragState.fromSection = null;
 
   if (Number.isNaN(toIndex) || Number.isNaN(fromIndex) || fromIndex === toIndex) {
     renderNotes();
     return;
   }
 
-  const notes = [...state.notes];
-  const [moved] = notes.splice(fromIndex, 1);
-  notes.splice(toIndex, 0, moved);
-  state.notes = notes;
+  if (fromSection !== toSection) {
+    renderNotes();
+    return;
+  }
+
+  if (!state.searchTerm && state.view === "active" && (fromSection === "pinned" || fromSection === "others")) {
+    const pinned = state.notes.filter((note) => note.pinned).map((note) => ({ ...note }));
+    const others = state.notes.filter((note) => !note.pinned).map((note) => ({ ...note }));
+
+    const sourceArray = fromSection === "pinned" ? pinned : others;
+    const [moved] = sourceArray.splice(fromIndex, 1);
+    sourceArray.splice(toIndex, 0, moved);
+
+    state.notes = [...pinned, ...others];
+  } else {
+    const notes = [...state.notes];
+    const [moved] = notes.splice(fromIndex, 1);
+    notes.splice(toIndex, 0, moved);
+    state.notes = notes;
+  }
+
   renderNotes();
 
   try {
-    await persistOrder(notes.map((note) => note.id));
+    await persistOrder();
   } catch (error) {
     console.error(error);
     await loadNotes(state.searchTerm, state.view);
@@ -166,8 +200,27 @@ async function handleDrop(event) {
   }
 }
 
-async function persistOrder(ids) {
-  if (!ids.length) {
+async function persistOrder() {
+  if (state.searchTerm) {
+    return;
+  }
+
+  let payload;
+  if (state.view === "active") {
+    const pinnedIds = state.notes.filter((note) => note.pinned).map((note) => note.id);
+    const unpinnedIds = state.notes.filter((note) => !note.pinned).map((note) => note.id);
+    payload = {
+      folder: "active",
+      pinnedIds,
+      unpinnedIds,
+    };
+  } else if (state.view === "archived") {
+    const ids = state.notes.map((note) => note.id);
+    payload = {
+      folder: "archived",
+      ids,
+    };
+  } else {
     return;
   }
 
@@ -175,7 +228,7 @@ async function persistOrder(ids) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ ids, folder: state.view }),
+    body: JSON.stringify(payload),
   });
 
   if (response.status === 401) {
@@ -186,12 +239,23 @@ async function persistOrder(ids) {
   }
 
   if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    console.error("Reorder failed", {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorText,
+      payload,
+    });
     throw new Error("reorder_failed");
   }
 
   const data = await response.json().catch(() => ({}));
   if (Array.isArray(data.notes)) {
-    state.notes = data.notes.map((note) => ({ ...note, archived: Boolean(note.archived) }));
+    state.notes = data.notes.map((note) => ({
+      ...note,
+      archived: Boolean(note.archived),
+      pinned: Boolean(note.pinned),
+    }));
     renderNotes();
     updateViewControls();
   }
@@ -370,7 +434,11 @@ async function loadNotes(searchTerm = state.searchTerm || "", view = state.view)
 
     const data = await response.json();
     state.notes = Array.isArray(data.notes)
-      ? data.notes.map((note) => ({ ...note, archived: Boolean(note.archived) }))
+      ? data.notes.map((note) => ({
+          ...note,
+          archived: Boolean(note.archived),
+          pinned: Boolean(note.pinned),
+        }))
       : [];
     sortNotes();
     renderNotes();
@@ -398,62 +466,135 @@ function renderNotes() {
     return;
   }
 
+  const enablePinnedLayout = !state.searchTerm && state.view === "active";
   const enableDrag = canDrag();
 
-  state.notes.forEach((note, index) => {
-    const card = document.createElement("article");
-    card.className = "note-card";
-    if (note.archived) {
-      card.classList.add("note-card--archived");
-    }
-    card.tabIndex = 0;
+  if (enablePinnedLayout) {
+    const pinnedNotes = state.notes.filter((note) => note.pinned);
+    const otherNotes = state.notes.filter((note) => !note.pinned);
 
-    if (enableDrag) {
-      card.draggable = true;
-      card.dataset.index = String(index);
-      card.addEventListener("dragstart", handleDragStart);
-      card.addEventListener("dragover", handleDragOver);
-      card.addEventListener("dragleave", handleDragLeave);
-      card.addEventListener("drop", handleDrop);
-      card.addEventListener("dragend", handleDragEnd);
-    } else {
-      card.draggable = false;
-    }
-
-    if (note.archived) {
-      const badge = document.createElement("span");
-      badge.className = "note-card__badge";
-      badge.textContent = "Archived";
-      card.append(badge);
-    }
-
-    const titleEl = document.createElement("h3");
-    titleEl.className = "note-card__title";
-    titleEl.textContent = note.title || "Untitled";
-
-    const bodyEl = document.createElement("p");
-    bodyEl.className = "note-card__body";
-    bodyEl.textContent = note.body || "";
-
-    card.append(titleEl, bodyEl);
-
-    const open = () => {
-      openModal({
-        mode: "edit",
-        note,
+    if (pinnedNotes.length) {
+      appendNotesSection({
+        title: "Pinned",
+        notes: pinnedNotes,
+        section: "pinned",
+        enableDrag,
       });
-    };
+    }
 
-    card.addEventListener("click", open);
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        open();
-      }
-    });
+    if (otherNotes.length) {
+      appendNotesSection({
+        title: pinnedNotes.length ? "Others" : null,
+        notes: otherNotes,
+        section: "others",
+        enableDrag,
+      });
+    }
+    return;
+  }
 
-    dom.notesContainer.appendChild(card);
+  appendNotesSection({
+    title: null,
+    notes: state.notes,
+    section: state.view === "archived" ? "archived" : "default",
+    enableDrag,
   });
+}
+
+function appendNotesSection({ title, notes, section, enableDrag }) {
+  const sectionEl = document.createElement("section");
+  sectionEl.className = "notes-section";
+
+  if (title) {
+    const heading = document.createElement("h2");
+    heading.className = "notes-section__title";
+    heading.textContent = title;
+    sectionEl.append(heading);
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "notes-grid";
+
+  notes.forEach((note, index) => {
+    const card = createNoteCard({ note, section, index, enableDrag });
+    grid.append(card);
+  });
+
+  sectionEl.append(grid);
+  dom.notesContainer.append(sectionEl);
+}
+
+function createNoteCard({ note, section, index, enableDrag }) {
+  const card = document.createElement("article");
+  card.className = "note-card";
+  if (note.archived) {
+    card.classList.add("note-card--archived");
+  }
+  if (shouldTruncate(note)) {
+    card.classList.add("note-card--truncated");
+  }
+  card.tabIndex = 0;
+  card.dataset.section = section;
+  card.dataset.index = String(index);
+
+  if (enableDrag) {
+    card.draggable = true;
+    card.addEventListener("dragstart", handleDragStart);
+    card.addEventListener("dragover", handleDragOver);
+    card.addEventListener("dragleave", handleDragLeave);
+    card.addEventListener("drop", handleDrop);
+    card.addEventListener("dragend", handleDragEnd);
+  } else {
+    card.draggable = false;
+  }
+
+  if (note.archived) {
+    const badge = document.createElement("span");
+    badge.className = "note-card__badge";
+    badge.textContent = "Archived";
+    card.append(badge);
+  }
+
+  const titleEl = document.createElement("h3");
+  titleEl.className = "note-card__title";
+  titleEl.textContent = note.title || "Untitled";
+
+  const bodyEl = document.createElement("p");
+  bodyEl.className = "note-card__body";
+  bodyEl.textContent = note.body || "";
+
+  card.append(titleEl, bodyEl);
+
+  if (!note.archived) {
+    const pinButton = document.createElement("button");
+    pinButton.type = "button";
+    pinButton.className = "note-card__pin";
+    pinButton.textContent = note.pinned ? "Unpin" : "Pin";
+    pinButton.setAttribute("aria-label", note.pinned ? "Unpin note" : "Pin note");
+    pinButton.setAttribute("aria-pressed", note.pinned ? "true" : "false");
+    pinButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePin(note);
+    });
+    card.append(pinButton);
+  }
+
+  const open = () => {
+    openModal({
+      mode: "edit",
+      note,
+    });
+  };
+
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+
+  return card;
 }
 
 function openModal({ mode, note }) {
@@ -542,6 +683,44 @@ async function handleNoteSubmit(event) {
   }
 }
 
+async function togglePin(note) {
+  if (!state.currentUser || note.archived) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/notes/${note.id}/pin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ pinned: !note.pinned }),
+    });
+
+    if (response.status === 401) {
+      const payload = await response.json().catch(() => ({}));
+      mergeAuthConfig(payload);
+      await logout({ silent: true });
+      return;
+    }
+
+    if (response.status === 404) {
+      alert("Note not found.");
+      await loadNotes(state.searchTerm, state.view);
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error("Failed to toggle pin state");
+    }
+
+    await response.json().catch(() => ({}));
+    await loadNotes(state.searchTerm, state.view);
+  } catch (error) {
+    console.error(error);
+    alert("Could not update pin state. Please try again.");
+  }
+}
+
 async function handleDeleteNote() {
   if (!state.editing || state.editing.mode !== "edit" || !state.currentUser) {
     return;
@@ -608,6 +787,9 @@ function sortNotes() {
     if (a.archived !== b.archived) {
       return a.archived ? 1 : -1;
     }
+    if (!a.archived && !b.archived && a.pinned !== b.pinned) {
+      return a.pinned ? -1 : 1;
+    }
     if (
       typeof a.position === "number" &&
       !Number.isNaN(a.position) &&
@@ -655,7 +837,12 @@ async function handleUnarchive() {
     }
 
     await response.json().catch(() => ({}));
-    await loadNotes(state.searchTerm, "active");
+    state.view = "active";
+    state.searchTerm = "";
+    if (dom.searchInput) {
+      dom.searchInput.value = "";
+    }
+    await loadNotes("", "active");
     closeModal();
   } catch (error) {
     console.error(error);
