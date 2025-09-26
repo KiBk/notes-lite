@@ -3,7 +3,7 @@
 A lightweight, Google Keep–style notes app that supports quick capture, editing, and organization across multiple devices.
 
 ## Key Workflows
-- **Sign-in** – Start with a simple name-based login for quick access, or authenticate through an OpenID Connect provider (e.g., Authelia). The app remembers the last user session and restores it automatically.
+- **Sign-in** – Start with a simple name-based login for quick access. The app remembers the last user session and restores it automatically.
 - **Create notes** – Use the plus button to add a new note consisting of a plain-text title and body. Notes save immediately to the user’s account.
 - **Read at a glance** – Notes appear in a responsive masonry layout. Long notes show a preview with a fade-out so cards stay compact; open the note to read everything.
 - **Edit in place** – Click a note to open a modal where you can update the title or body. Changes persist when you save.
