@@ -19,3 +19,17 @@ A lightweight, Google Keep–style notes app that supports quick capture, editin
 - **Visual polish** – Use blurred sheet overlays, subtle shadows, softened borders, and auto-expanding text areas to keep the UI modern. Keep action chips horizontally aligned.
 - **Theme aware** – Provide a persistent light/dark theme toggle accessible from both the login screen and top bar. Persist the chosen theme in local storage and respect system defaults.
 - **Session aware** – Each user’s notes remain separate, and switching tabs or refreshing keeps the current session. Persist both user and theme preferences locally.
+
+## Implementation
+- Sign-in flow (`LoginScreen.tsx`, `store.tsx`): simple name capture with theme toggle, persisting the active user in local storage.
+- Floating note creation (`Fab.tsx`, `store.tsx`): a fixed action button seeds theme-appropriate pastel notes and saves them immediately per user.
+- Masonry board (`NotesGrid.tsx`, `App.css`): CSS grid variables plus `ResizeObserver`-driven row spans maintain tight packing with uniform gutters across cards.
+- Card editing sheet (`NoteSheet.tsx`, `App.css`): near full-height modal inherits the note colour, keeps the grid blurred behind, and offers auto-growing text with anchored action chips.
+- Colour palette (`ColorPalette.tsx`): floating bubble palette keeps focus inside while picking swatches, then updates the note hue instantly.
+- Pinning & sections (`NoteCard.tsx`, `store.tsx`): lightweight pin control surfaces on hover and maintains separate pinned/unpinned orders.
+- Archive management (`App.tsx`, `NoteSheet.tsx`): archived notes live behind a dedicated tab with delete-forever handling.
+- Global search (`TopBar.tsx`, `App.tsx`): filters across active and archived notes, grouping results for clarity.
+- Drag-and-drop ordering (`NotesGrid.tsx`, `@dnd-kit`): pointer/touch sensors feed reordering callbacks that persist the new sequence.
+- Theme-aware cards (`NoteCard.tsx`, `App.css`): note preview fades sample the card colour, adjusting opacity per theme so long text blends smoothly.
+- Theming (`ThemeToggle.tsx`, `store.tsx`): light/dark selection stored alongside the user profile; switching modes remaps every note colour between light and dark palettes.
+- Session persistence (`store.tsx`): serialized state keeps users, note collections, and preferences intact across refreshes.
