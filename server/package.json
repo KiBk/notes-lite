@@ -1,0 +1,19 @@
+{
+  "name": "notes-backend",
+  "version": "0.1.0",
+  "description": "Slim Node.js service providing notes CRUD backed by SQLite",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "migrate": "node src/migrate.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.0",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "zod": "^3.23.8"
+  }
+}

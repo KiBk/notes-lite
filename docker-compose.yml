@@ -1,0 +1,15 @@
+services:
+  notes-service:
+    build: ./server
+    container_name: notes-service
+    environment:
+      PORT: 4000
+      DATABASE_PATH: /data/notes.db
+    ports:
+      - "4000:4000"
+    volumes:
+      - notes_data:/data
+    restart: unless-stopped
+
+volumes:
+  notes_data:

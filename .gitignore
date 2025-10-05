@@ -1,0 +1,5 @@
+# Backend artifacts
+server/node_modules/
+data/
+*.db
+*.sqlite
