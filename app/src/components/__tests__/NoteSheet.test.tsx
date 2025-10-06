@@ -1,11 +1,37 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import NoteSheet from '../NoteSheet'
 import { createTestNote } from '../../../tests/utils/test-utils'
 
 describe('NoteSheet', () => {
   const palette = ['#fde2e4', '#fff1d0', '#e9f5db']
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('debounces typing before triggering onUpdate', async () => {
+    vi.useFakeTimers()
+    const handleUpdate = vi.fn()
+    render(
+      <NoteSheet
+        note={createTestNote()}
+        palette={palette}
+        onClose={() => {}}
+        onUpdate={handleUpdate}
+        onTogglePin={() => {}}
+        onToggleArchive={() => {}}
+        onDelete={() => {}}
+      />,
+    )
+
+    fireEvent.change(screen.getByPlaceholderText('Title'), { target: { value: 'Hello' } })
+    expect(handleUpdate).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(handleUpdate).toHaveBeenCalledWith({ title: 'Hello' })
+  })
 
   it('closes when clicking the overlay outside the sheet', async () => {
     const user = userEvent.setup()
