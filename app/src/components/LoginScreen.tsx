@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import ThemeToggle from './ThemeToggle'
+import ErrorBanner from './ErrorBanner'
 import type { ThemeMode } from '../types'
 
 interface LoginScreenProps {
@@ -8,10 +9,27 @@ interface LoginScreenProps {
   onToggleTheme: () => void
   onLogin: (name: string) => void
   rememberedName?: string
+  isLoading?: boolean
+  errorMessage?: string
+  onRetry?: () => void | Promise<void>
+  onDismissError: () => void
 }
 
-const LoginScreen = ({ theme, onToggleTheme, onLogin, rememberedName }: LoginScreenProps) => {
+const LoginScreen = ({
+  theme,
+  onToggleTheme,
+  onLogin,
+  rememberedName,
+  isLoading = false,
+  errorMessage,
+  onRetry,
+  onDismissError,
+}: LoginScreenProps) => {
   const [name, setName] = useState(rememberedName ?? '')
+
+  useEffect(() => {
+    setName(rememberedName ?? '')
+  }, [rememberedName])
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault()
@@ -22,6 +40,14 @@ const LoginScreen = ({ theme, onToggleTheme, onLogin, rememberedName }: LoginScr
 
   return (
     <div className="login-shell">
+      {errorMessage && (
+        <ErrorBanner
+          message={errorMessage}
+          onRetry={onRetry}
+          onDismiss={onDismissError}
+          busy={isLoading}
+        />
+      )}
       <div className="login-card">
         <header className="login-header">
           <h1>Notes Lite</h1>
@@ -37,10 +63,11 @@ const LoginScreen = ({ theme, onToggleTheme, onLogin, rememberedName }: LoginScr
               placeholder="Pat"
               value={name}
               onChange={(event) => setName(event.target.value)}
+              disabled={isLoading}
             />
           </label>
-          <button type="submit" className="login-button">
-            Enter Notes
+          <button type="submit" className="login-button" disabled={isLoading}>
+            {isLoading ? 'Signing in…' : 'Enter Notes'}
           </button>
         </form>
       </div>

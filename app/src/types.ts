@@ -11,6 +11,27 @@ export interface Note {
   updatedAt: string
 }
 
+export interface NotePayload {
+  title?: string
+  body?: string
+  color?: string
+  pinned?: boolean
+  archived?: boolean
+}
+
+export type NoteCreatePayload = NotePayload
+
+export type NoteUpdatePayload = NotePayload
+
+export interface NoteOrderPayload {
+  order: string[]
+}
+
+export interface ApiErrorPayload {
+  message: string
+  details?: unknown
+}
+
 export interface UserStore {
   notes: Record<string, Note>
   pinnedOrder: string[]
@@ -19,7 +40,6 @@ export interface UserStore {
 }
 
 export interface PersistedState {
-  users: Record<string, UserStore>
   lastUser?: string
   theme?: ThemeMode
 }

@@ -8,9 +8,10 @@ interface TopBarProps {
   search: string
   onSearch: (value: string) => void
   onSignOut: () => void
+  isSaving?: boolean
 }
 
-const TopBar = ({ user, theme, onToggleTheme, search, onSearch, onSignOut }: TopBarProps) => {
+const TopBar = ({ user, theme, onToggleTheme, search, onSearch, onSignOut, isSaving = false }: TopBarProps) => {
   return (
     <header className="top-bar">
       <div className="brand">Notes Lite</div>
@@ -23,6 +24,11 @@ const TopBar = ({ user, theme, onToggleTheme, search, onSearch, onSignOut }: Top
         />
       </div>
       <div className="top-bar-actions">
+        {isSaving && (
+          <span className="saving-indicator" role="status">
+            Saving…
+          </span>
+        )}
         <ThemeToggle mode={theme} onToggle={onToggleTheme} variant="compact" />
         <div className="user-chip" title={`Signed in as ${user}`}>
           <span className="user-name">{user}</span>

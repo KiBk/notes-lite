@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { StoreContext } from './store-context'
+import { apiClient, ApiError } from './api/client'
 import type { NoteBucket, StoreValue } from './store-types'
-import type { Note, PersistedState, ThemeMode, UserStore } from './types'
+import type {
+  Note,
+  NoteOrderPayload,
+  NoteUpdatePayload,
+  PersistedState,
+  ThemeMode,
+  UserStore,
+} from './types'
 
 const STORAGE_KEY = 'notes-lite-state-v1'
 
@@ -64,87 +72,16 @@ const cloneUser = (store: UserStore | undefined): UserStore => {
       archivedOrder: [],
     }
   }
+  const notes: Record<string, Note> = {}
+  Object.entries(store.notes).forEach(([id, note]) => {
+    notes[id] = { ...note }
+  })
   return {
-    notes: { ...store.notes },
+    notes,
     pinnedOrder: [...store.pinnedOrder],
     unpinnedOrder: [...store.unpinnedOrder],
     archivedOrder: [...store.archivedOrder],
   }
-}
-
-const isStoreEmpty = (store: UserStore | undefined) => {
-  if (!store) return true
-  if (store.pinnedOrder.length > 0 || store.unpinnedOrder.length > 0 || store.archivedOrder.length > 0) {
-    return false
-  }
-  return Object.keys(store.notes).length === 0
-}
-
-const buildAdminSeedStore = (palette: string[]): UserStore => {
-  const now = new Date().toISOString()
-  const seedNotes: Note[] = [
-    {
-      id: 'admin-note-team-sync',
-      title: 'Team sync notes',
-      body: '- Confirm sprint goals\n- Demo the inbox zero clean-up\n- Surface any blockers before retro',
-      color: palette[2 % palette.length],
-      pinned: true,
-      archived: false,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'admin-note-product-polish',
-      title: 'Product polish checklist',
-      body: '• Sweep app for copy nits\n• QA drag and drop in safari\n• Prep screenshots for release post',
-      color: palette[0],
-      pinned: false,
-      archived: false,
-      createdAt: now,
-      updatedAt: now,
-    },
-    {
-      id: 'admin-note-archive',
-      title: 'Archived: Launch recap',
-      body: '✅ Handoff to support\n✅ Close out launch tracker\n⏳ Collect feedback survey responses',
-      color: palette[3 % palette.length],
-      pinned: false,
-      archived: true,
-      createdAt: now,
-      updatedAt: now,
-    },
-  ]
-
-  const notes: Record<string, Note> = {}
-  const pinnedOrder: string[] = []
-  const unpinnedOrder: string[] = []
-  const archivedOrder: string[] = []
-
-  seedNotes.forEach((note) => {
-    notes[note.id] = note
-    if (note.archived) {
-      archivedOrder.push(note.id)
-    } else if (note.pinned) {
-      pinnedOrder.push(note.id)
-    } else {
-      unpinnedOrder.push(note.id)
-    }
-  })
-
-  return {
-    notes,
-    pinnedOrder,
-    unpinnedOrder,
-    archivedOrder,
-  }
-}
-
-const createSeedStore = (name: string, theme: ThemeMode): UserStore => {
-  if (name.trim().toLowerCase() === 'admin user') {
-    const palette = theme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
-    return buildAdminSeedStore(palette)
-  }
-  return cloneUser(undefined)
 }
 
 const getSystemTheme = (): ThemeMode => {
@@ -154,49 +91,92 @@ const getSystemTheme = (): ThemeMode => {
   return 'light'
 }
 
-const loadInitialState = (): PersistedState => {
+const loadPersistedState = (): PersistedState => {
   if (typeof window === 'undefined') {
-    return { users: {}, theme: 'light' }
+    return { theme: 'light' }
   }
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY)
     if (!raw) {
-      return { users: {}, theme: getSystemTheme() }
+      return { theme: getSystemTheme() }
     }
     const parsed = JSON.parse(raw) as PersistedState
-    const users = { ...(parsed.users ?? {}) }
-    const adminKey = Object.keys(users).find((key) => key.trim().toLowerCase() === 'admin user')
-    const resolvedTheme = parsed.theme ?? getSystemTheme()
-    if (adminKey && isStoreEmpty(users[adminKey])) {
-      const palette = resolvedTheme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
-      users[adminKey] = buildAdminSeedStore(palette)
-    }
     return {
-      users,
+      theme: parsed.theme ?? getSystemTheme(),
       lastUser: parsed.lastUser,
-      theme: resolvedTheme,
     }
-  } catch (err) {
-    console.warn('Failed to load notes state', err)
-    return { users: {}, theme: getSystemTheme() }
+  } catch (error) {
+    console.warn('Failed to load persisted state', error)
+    return { theme: getSystemTheme() }
   }
 }
 
-export const StoreProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<PersistedState>(() => loadInitialState())
+const persistState = (state: PersistedState) => {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  } catch (error) {
+    console.warn('Failed to persist settings', error)
+  }
+}
 
-  const theme = state.theme ?? getSystemTheme()
-  const palette = theme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
-  const currentUser = state.lastUser
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof ApiError) {
+    return error.message
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'Something went wrong. Please try again.'
+}
+
+const buildUpdatePayload = (changes: Partial<Omit<Note, 'id'>>): NoteUpdatePayload => {
+  const payload: NoteUpdatePayload = {}
+  const assign = <K extends keyof NoteUpdatePayload>(key: K, value: NoteUpdatePayload[K]) => {
+    ;(payload as Record<string, unknown>)[key] = value
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'title')) {
+    assign('title', changes.title ?? '')
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'body')) {
+    assign('body', changes.body ?? '')
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'color')) {
+    if (changes.color) {
+      assign('color', changes.color)
+    } else {
+      assign('color', LIGHT_PASTELS[0])
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'pinned')) {
+    assign('pinned', Boolean(changes.pinned))
+  }
+  if (Object.prototype.hasOwnProperty.call(changes, 'archived')) {
+    assign('archived', Boolean(changes.archived))
+  }
+  return payload
+}
+
+export const StoreProvider = ({ children }: { children: ReactNode }) => {
+  const [persisted, setPersisted] = useState<PersistedState>(() => loadPersistedState())
+  const [currentUser, setCurrentUser] = useState<string>()
+  const [userStore, setUserStore] = useState<UserStore>(emptyUserStore)
+  const storeRef = useRef<UserStore>(userStore)
+  const pendingCreates = useRef<Map<string, string>>(new Map())
+  const [phase, setPhase] = useState<'signedOut' | 'loading' | 'ready'>('signedOut')
+  const [savingCount, setSavingCount] = useState(0)
+  const [errorState, setErrorState] = useState<{ message: string; retry?: () => void } | null>(null)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch (err) {
-      console.warn('Failed to persist notes state', err)
-    }
-  }, [state])
+    storeRef.current = userStore
+  }, [userStore])
+
+  const theme = persisted.theme ?? getSystemTheme()
+  const palette = theme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
+
+  useEffect(() => {
+    persistState(persisted)
+  }, [persisted])
 
   useEffect(() => {
     const root = document.documentElement
@@ -204,238 +184,341 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     root.style.setProperty('color-scheme', theme)
   }, [theme])
 
-  const ensureUser = (name: string, prev: PersistedState) => {
-    const users = { ...prev.users }
-    const existing = users[name]
-    const shouldSeedAdmin = name.trim().toLowerCase() === 'admin user'
-    const currentTheme = prev.theme ?? getSystemTheme()
-    const store = !existing
-      ? createSeedStore(name, currentTheme)
-      : shouldSeedAdmin && isStoreEmpty(existing)
-        ? buildAdminSeedStore(currentTheme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS)
-        : cloneUser(existing)
-    users[name] = store
-    return { users, store }
-  }
-
-  const login = useCallback((name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    setState((prev) => {
-      const { users } = ensureUser(trimmed, prev)
-      return {
-        ...prev,
-        users,
-        lastUser: trimmed,
-      }
-    })
+  const clearError = useCallback(() => {
+    setErrorState(null)
   }, [])
 
-  const signOut = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      lastUser: undefined,
-    }))
-  }, [])
-
-  const setTheme = useCallback((mode: ThemeMode) => {
-    setState((prev) => {
-      const currentTheme = prev.theme ?? getSystemTheme()
-      if (currentTheme === mode) {
-        return prev
+  const runMutation = useCallback(
+    async (options: {
+      run: () => Promise<UserStore>
+      optimistic?: (store: UserStore) => UserStore
+      retry: () => void | Promise<void>
+    }): Promise<UserStore | undefined> => {
+      if (!currentUser) {
+        return undefined
       }
-      const fromPalette = currentTheme === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
-      const toPalette = mode === 'dark' ? DARK_PASTELS : LIGHT_PASTELS
-      const now = new Date().toISOString()
-      const mapColor = (color: string) => {
-        const idx = fromPalette.findIndex((hex) => hex.toLowerCase() === color.toLowerCase())
-        return idx === -1 ? color : toPalette[idx] ?? color
+      const snapshot = cloneUser(storeRef.current)
+      let applied = false
+      if (options.optimistic) {
+        const optimisticStore = options.optimistic(cloneUser(snapshot))
+        setUserStore(optimisticStore)
+        applied = true
       }
-      const users = Object.entries(prev.users).reduce<Record<string, UserStore>>((acc, [name, store]) => {
-        const nextNotes: Record<string, Note> = {}
-        let changed = false
-        Object.entries(store.notes).forEach(([id, note]) => {
-          const nextColor = mapColor(note.color)
-          if (nextColor === note.color) {
-            nextNotes[id] = note
-            return
-          }
-          changed = true
-          nextNotes[id] = {
-            ...note,
-            color: nextColor,
-            updatedAt: now,
-          }
-        })
-        acc[name] = changed
-          ? {
-              notes: nextNotes,
-              pinnedOrder: [...store.pinnedOrder],
-              unpinnedOrder: [...store.unpinnedOrder],
-              archivedOrder: [...store.archivedOrder],
-            }
-          : store
-        return acc
-      }, {})
-
-      return {
-        ...prev,
-        theme: mode,
-        users,
-      }
-    })
-  }, [])
-
-  const mutateUser = useCallback(
-    (updater: (store: UserStore) => UserStore | void) => {
-      if (!currentUser) return
-      setState((prev) => {
-        const existing = prev.users[currentUser]
-        const cloned = cloneUser(existing)
-        const result = updater(cloned)
-        const nextUsers = { ...prev.users, [currentUser]: result ?? cloned }
-        return {
-          ...prev,
-          users: nextUsers,
+      setSavingCount((count) => count + 1)
+      setErrorState(null)
+      try {
+        const remoteStore = await options.run()
+        setUserStore(remoteStore)
+        return remoteStore
+      } catch (error) {
+        if (applied) {
+          setUserStore(snapshot)
         }
-      })
+        const message = toErrorMessage(error)
+        setErrorState({ message, retry: options.retry })
+        throw error
+      } finally {
+        setSavingCount((count) => Math.max(0, count - 1))
+      }
     },
     [currentUser],
   )
 
-  const createNote = useCallback(() => {
-    if (!currentUser) return undefined
-    const id = generateId()
-    const now = new Date().toISOString()
-    mutateUser((store) => {
-      const note: Note = {
-        id,
-        title: '',
-        body: '',
-        color: palette[0],
-        pinned: false,
-        archived: false,
-        createdAt: now,
-        updatedAt: now,
+  const login = useCallback(
+    (name: string) => {
+      const trimmed = name.trim()
+      if (!trimmed) return
+      setErrorState(null)
+      setPhase('loading')
+      setCurrentUser(trimmed)
+
+      const attempt = async () => {
+        try {
+          const store = await apiClient.getStore(trimmed)
+          setUserStore(store)
+          setPhase('ready')
+          setPersisted((prev) => ({ ...prev, lastUser: trimmed }))
+        } catch (error) {
+          setPhase('signedOut')
+          setCurrentUser(undefined)
+          const message = toErrorMessage(error)
+          setErrorState({ message, retry: () => login(trimmed) })
+        }
       }
-      store.notes[id] = note
-      store.unpinnedOrder = [id, ...store.unpinnedOrder.filter((nid) => nid !== id)]
-      return store
+
+      void attempt()
+    },
+    [],
+  )
+
+  const signOut = useCallback(() => {
+    setCurrentUser(undefined)
+    setUserStore(emptyUserStore)
+    setPhase('signedOut')
+    setSavingCount(0)
+    setErrorState(null)
+  }, [])
+
+  const setTheme = useCallback((mode: ThemeMode) => {
+    setPersisted((prev) => {
+      if ((prev.theme ?? getSystemTheme()) === mode) {
+        return prev
+      }
+      return { ...prev, theme: mode }
     })
-    return id
-  }, [currentUser, mutateUser, palette])
+  }, [])
+
+  const createNote = useCallback(async () => {
+    if (!currentUser) return undefined
+    const userId = currentUser
+    const tempId = generateId()
+    const now = new Date().toISOString()
+    const optimisticNote: Note = {
+      id: tempId,
+      title: '',
+      body: '',
+      color: palette[0],
+      pinned: false,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const previous = cloneUser(storeRef.current)
+    try {
+      const remoteStore = await runMutation({
+        run: () => apiClient.createNote(userId, { color: optimisticNote.color }),
+        optimistic: (store) => {
+          store.notes[tempId] = optimisticNote
+          store.unpinnedOrder = [tempId, ...store.unpinnedOrder.filter((nid) => nid !== tempId)]
+          return store
+        },
+        retry: () => {
+          void createNote()
+        },
+      })
+      if (!remoteStore) {
+        return tempId
+      }
+      const existingIds = new Set(Object.keys(previous.notes))
+      const newId = Object.keys(remoteStore.notes).find((id) => !existingIds.has(id))
+      if (newId && newId !== tempId) {
+        pendingCreates.current.set(tempId, newId)
+      }
+      return newId ?? tempId
+    } catch (error) {
+      console.warn('Failed to create note', error)
+      pendingCreates.current.delete(tempId)
+      return undefined
+    }
+  }, [currentUser, palette, runMutation])
 
   const updateNote = useCallback(
     (id: string, changes: Partial<Omit<Note, 'id'>>) => {
-      mutateUser((store) => {
-        const existing = store.notes[id]
-        if (!existing) return store
-        const updated: Note = {
-          ...existing,
-          ...changes,
-          updatedAt: changes.updatedAt ?? new Date().toISOString(),
-        }
-        store.notes[id] = updated
-        return store
+      if (!currentUser) return
+      const userId = currentUser
+      const payload = buildUpdatePayload(changes)
+      if (Object.keys(payload).length === 0) {
+        return
+      }
+      const now = new Date().toISOString()
+      void runMutation({
+        run: () => apiClient.updateNote(userId, id, payload as NoteUpdatePayload),
+        optimistic: (store) => {
+          const existing = store.notes[id]
+          if (!existing) return store
+          const optimisticNote: Note = {
+            ...existing,
+            ...changes,
+            updatedAt: changes.updatedAt ?? now,
+          }
+          store.notes[id] = optimisticNote
+          return store
+        },
+        retry: () => {
+          updateNote(id, changes)
+        },
+      }).catch(() => {
+        // handled via error state
       })
     },
-    [mutateUser],
+    [currentUser, runMutation],
   )
 
   const togglePinned = useCallback(
     (id: string) => {
-      mutateUser((store) => {
-        const note = store.notes[id]
-        if (!note || note.archived) return store
-        const nextPinned = !note.pinned
-        note.pinned = nextPinned
-        note.updatedAt = new Date().toISOString()
-        store.pinnedOrder = store.pinnedOrder.filter((nid) => nid !== id)
-        store.unpinnedOrder = store.unpinnedOrder.filter((nid) => nid !== id)
-        if (nextPinned) {
-          store.pinnedOrder = [id, ...store.pinnedOrder]
-        } else {
-          store.unpinnedOrder = [id, ...store.unpinnedOrder]
-        }
-        return store
-      })
+      if (!currentUser) return
+      const userId = currentUser
+      const existing = storeRef.current.notes[id]
+      if (!existing || existing.archived) return
+      const nextPinned = !existing.pinned
+      const now = new Date().toISOString()
+      void runMutation({
+        run: () => apiClient.updateNote(userId, id, { pinned: nextPinned }),
+        optimistic: (store) => {
+          const note = store.notes[id]
+          if (!note) return store
+          const updated: Note = {
+            ...note,
+            pinned: nextPinned,
+            archived: false,
+            updatedAt: now,
+          }
+          store.notes[id] = updated
+          store.pinnedOrder = store.pinnedOrder.filter((nid) => nid !== id)
+          store.unpinnedOrder = store.unpinnedOrder.filter((nid) => nid !== id)
+          if (nextPinned) {
+            store.pinnedOrder = [id, ...store.pinnedOrder]
+          } else {
+            store.unpinnedOrder = [id, ...store.unpinnedOrder]
+          }
+          return store
+        },
+        retry: () => {
+          togglePinned(id)
+        },
+      }).catch(() => undefined)
     },
-    [mutateUser],
+    [currentUser, runMutation],
   )
 
   const toggleArchived = useCallback(
     (id: string) => {
-      mutateUser((store) => {
-        const note = store.notes[id]
-        if (!note) return store
-        const nextArchived = !note.archived
-        note.archived = nextArchived
-        note.updatedAt = new Date().toISOString()
-        if (nextArchived) {
-          note.pinned = false
+      if (!currentUser) return
+      const userId = currentUser
+      const existing = storeRef.current.notes[id]
+      if (!existing) return
+      const nextArchived = !existing.archived
+      const now = new Date().toISOString()
+      const nextPinned = nextArchived ? false : existing.pinned
+      void runMutation({
+        run: () => apiClient.updateNote(userId, id, { archived: nextArchived, pinned: nextPinned }),
+        optimistic: (store) => {
+          const note = store.notes[id]
+          if (!note) return store
+          const updated: Note = {
+            ...note,
+            archived: nextArchived,
+            pinned: nextPinned,
+            updatedAt: now,
+          }
+          store.notes[id] = updated
           store.pinnedOrder = store.pinnedOrder.filter((nid) => nid !== id)
           store.unpinnedOrder = store.unpinnedOrder.filter((nid) => nid !== id)
-          store.archivedOrder = [id, ...store.archivedOrder.filter((nid) => nid !== id)]
-        } else {
           store.archivedOrder = store.archivedOrder.filter((nid) => nid !== id)
-          store.unpinnedOrder = [id, ...store.unpinnedOrder.filter((nid) => nid !== id)]
-        }
-        return store
-      })
+          if (nextArchived) {
+            store.archivedOrder = [id, ...store.archivedOrder]
+          } else if (nextPinned) {
+            store.pinnedOrder = [id, ...store.pinnedOrder]
+          } else {
+            store.unpinnedOrder = [id, ...store.unpinnedOrder]
+          }
+          return store
+        },
+        retry: () => {
+          toggleArchived(id)
+        },
+      }).catch(() => undefined)
     },
-    [mutateUser],
+    [currentUser, runMutation],
   )
 
   const deleteForever = useCallback(
     (id: string) => {
-      mutateUser((store) => {
-        if (!store.notes[id]) return store
-        delete store.notes[id]
-        store.pinnedOrder = store.pinnedOrder.filter((nid) => nid !== id)
-        store.unpinnedOrder = store.unpinnedOrder.filter((nid) => nid !== id)
-        store.archivedOrder = store.archivedOrder.filter((nid) => nid !== id)
-        return store
-      })
+      if (!currentUser) return
+      const userId = currentUser
+      void runMutation({
+        run: () => apiClient.deleteNote(userId, id),
+        optimistic: (store) => {
+          if (!store.notes[id]) return store
+          delete store.notes[id]
+          store.pinnedOrder = store.pinnedOrder.filter((nid) => nid !== id)
+          store.unpinnedOrder = store.unpinnedOrder.filter((nid) => nid !== id)
+          store.archivedOrder = store.archivedOrder.filter((nid) => nid !== id)
+          return store
+        },
+        retry: () => {
+          deleteForever(id)
+        },
+      }).catch(() => undefined)
     },
-    [mutateUser],
+    [currentUser, runMutation],
   )
 
   const reorderNotes = useCallback(
     (bucket: NoteBucket, newOrder: string[]) => {
-      mutateUser((store) => {
-        const sanitised = newOrder.filter((nid) => store.notes[nid])
-        if (bucket === 'pinned') {
-          store.pinnedOrder = sanitised
-        } else if (bucket === 'unpinned') {
-          store.unpinnedOrder = sanitised
-        } else {
-          store.archivedOrder = sanitised
-        }
-        return store
-      })
+      if (!currentUser) return
+      const userId = currentUser
+      const payload: NoteOrderPayload = { order: newOrder }
+      void runMutation({
+        run: () => apiClient.reorderBucket(userId, bucket, payload),
+        optimistic: (store) => {
+          const valid = newOrder.filter((nid) => store.notes[nid])
+          const current =
+            bucket === 'pinned'
+              ? store.pinnedOrder
+              : bucket === 'unpinned'
+                ? store.unpinnedOrder
+                : store.archivedOrder
+          const missing = current.filter((nid) => !valid.includes(nid))
+          const merged = [...valid, ...missing]
+          if (bucket === 'pinned') {
+            store.pinnedOrder = merged
+          } else if (bucket === 'unpinned') {
+            store.unpinnedOrder = merged
+          } else {
+            store.archivedOrder = merged
+          }
+          return store
+        },
+        retry: () => {
+          reorderNotes(bucket, newOrder)
+        },
+      }).catch(() => undefined)
     },
-    [mutateUser],
+    [currentUser, runMutation],
   )
 
-  const userStore = currentUser ? state.users[currentUser] ?? emptyUserStore : emptyUserStore
+  const userStoreValue = currentUser ? userStore : emptyUserStore
 
   const { pinnedNotes, unpinnedNotes, archivedNotes } = useMemo(() => {
-    const deriveNotes = (ids: string[]) => ids.map((id) => userStore.notes[id]).filter(Boolean)
+    const deriveNotes = (ids: string[]) => ids.map((id) => userStoreValue.notes[id]).filter(Boolean)
     return {
-      pinnedNotes: deriveNotes(userStore.pinnedOrder),
-      unpinnedNotes: deriveNotes(userStore.unpinnedOrder),
-      archivedNotes: deriveNotes(userStore.archivedOrder),
+      pinnedNotes: deriveNotes(userStoreValue.pinnedOrder),
+      unpinnedNotes: deriveNotes(userStoreValue.unpinnedOrder),
+      archivedNotes: deriveNotes(userStoreValue.archivedOrder),
     }
-  }, [userStore])
+  }, [userStoreValue])
+
+  const resolveTempId = useCallback(
+    (id: string) => {
+      const resolved = pendingCreates.current.get(id)
+      if (resolved && resolved !== id) {
+        pendingCreates.current.delete(id)
+        return resolved
+      }
+      if (resolved === id) {
+        pendingCreates.current.delete(id)
+      }
+      return resolved
+    },
+    [],
+  )
 
   const value = useMemo<StoreValue>(
     () => ({
       theme,
       palette,
       currentUser,
+      rememberedUser: persisted.lastUser,
       pinnedNotes,
       unpinnedNotes,
       archivedNotes,
+      isLoading: phase === 'loading',
+      isSaving: savingCount > 0,
+      errorMessage: errorState?.message,
+      retry: errorState?.retry,
+      clearError,
+      resolveTempId,
       login,
       signOut,
       setTheme,
@@ -450,9 +533,15 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       theme,
       palette,
       currentUser,
+      persisted.lastUser,
       pinnedNotes,
       unpinnedNotes,
       archivedNotes,
+      phase,
+      savingCount,
+      errorState,
+      clearError,
+      resolveTempId,
       login,
       signOut,
       setTheme,

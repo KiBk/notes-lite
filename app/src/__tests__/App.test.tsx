@@ -1,41 +1,34 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { StoreProvider } from '../store'
-import type { Note, PersistedState, UserStore } from '../types'
-
-const STORAGE_KEY = 'notes-lite-state-v1'
-
-const renderApp = () => render(
-  <StoreProvider>
-    <App />
-  </StoreProvider>,
-)
-
-const seedUserState = (user: string, notes: Note[], options?: { pinned?: string[]; unpinned?: string[]; archived?: string[]; theme?: 'light' | 'dark'; lastUser?: string }) => {
-  const store: UserStore = {
-    notes: notes.reduce<Record<string, Note>>((acc, note) => {
-      acc[note.id] = note
-      return acc
-    }, {}),
-    pinnedOrder: options?.pinned ?? [],
-    unpinnedOrder: options?.unpinned ?? [],
-    archivedOrder: options?.archived ?? [],
+import type { Note, UserStore } from '../types'
+vi.mock('../api/client', async () => {
+  const module = await import('../../tests/helpers/apiMockInstance')
+  return {
+    apiClient: module.mockApi.apiClient,
+    ApiError: class ApiError extends Error {},
   }
+})
 
-  const state: PersistedState = {
-    users: { [user]: store },
-    lastUser: options?.lastUser ?? user,
-    theme: options?.theme ?? 'light',
-  }
+const { mockApi } = await import('../../tests/helpers/apiMockInstance')
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+const renderApp = () =>
+  render(
+    <StoreProvider>
+      <App />
+    </StoreProvider>,
+  )
+
+const seedUserState = (user: string, store: UserStore) => {
+  mockApi.seed(user, store)
 }
 
 describe('App integration', () => {
   beforeEach(() => {
     localStorage.clear()
+    mockApi.reset()
   })
 
   it('renders top bar after signing in', async () => {
@@ -82,18 +75,25 @@ describe('App integration', () => {
       },
     ]
 
-    seedUserState('Casey', notes, {
-      pinned: ['pinned-note'],
-      unpinned: ['unpinned-note'],
-      archived: ['archived-note'],
-      lastUser: 'Casey',
+    seedUserState('Casey', {
+      notes: {
+        'pinned-note': notes[0],
+        'unpinned-note': notes[1],
+        'archived-note': notes[2],
+      },
+      pinnedOrder: ['pinned-note'],
+      unpinnedOrder: ['unpinned-note'],
+      archivedOrder: ['archived-note'],
     })
 
+    const user = userEvent.setup()
     renderApp()
+
+    await user.type(screen.getByPlaceholderText('Pat'), 'Casey')
+    await user.click(screen.getByRole('button', { name: 'Enter Notes' }))
 
     await screen.findByText('Alpha project')
 
-    const user = userEvent.setup()
     const searchBox = screen.getByPlaceholderText('Search notes')
     await user.type(searchBox, 'alpha')
 
@@ -133,11 +133,12 @@ describe('App integration', () => {
   })
 
   it('shows empty message when search has no matches across tabs', async () => {
-    seedUserState('Jamie', [], { pinned: [], unpinned: [], archived: [], lastUser: 'Jamie' })
-
+    const user = userEvent.setup()
     renderApp()
 
-    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText('Pat'), 'Jamie')
+    await user.click(screen.getByRole('button', { name: 'Enter Notes' }))
+
     const searchBox = await screen.findByPlaceholderText('Search notes')
     await user.type(searchBox, 'nope')
 

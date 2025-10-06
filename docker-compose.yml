@@ -8,8 +8,5 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - notes_data:/data
+      - ./docker_volume_notes_data:/data
     restart: unless-stopped
-
-volumes:
-  notes_data:

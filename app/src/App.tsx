@@ -5,6 +5,7 @@ import Tabs from './components/Tabs'
 import NotesGrid from './components/NotesGrid'
 import Fab from './components/Fab'
 import NoteSheet from './components/NoteSheet'
+import ErrorBanner from './components/ErrorBanner'
 import './App.css'
 import { useStore } from './store-context'
 import type { Note } from './types'
@@ -17,6 +18,12 @@ const App = () => {
     pinnedNotes,
     unpinnedNotes,
     archivedNotes,
+    rememberedUser,
+    isLoading,
+    isSaving,
+    errorMessage,
+    retry,
+    clearError,
     login,
     signOut,
     setTheme,
@@ -26,6 +33,7 @@ const App = () => {
     toggleArchived,
     deleteForever,
     reorderNotes,
+    resolveTempId,
   } = useStore()
 
   const [activeTab, setActiveTab] = useState<'notes' | 'archived'>('notes')
@@ -52,17 +60,24 @@ const App = () => {
 
   useEffect(() => {
     if (activeNoteId && !activeNote) {
+      const resolved = resolveTempId(activeNoteId)
+      if (resolved) {
+        setActiveNoteId(resolved)
+        return
+      }
       setActiveNoteId(undefined)
     }
-  }, [activeNoteId, activeNote])
+  }, [activeNoteId, activeNote, resolveTempId])
 
   const handleCreateNote = () => {
-    const id = createNote()
-    if (id) {
-      setActiveTab('notes')
-      setSearch('')
-      setActiveNoteId(id)
-    }
+    setActiveTab('notes')
+    setSearch('')
+    void (async () => {
+      const id = await createNote()
+      if (id) {
+        setActiveNoteId(id)
+      }
+    })()
   }
 
   const query = search.trim().toLowerCase()
@@ -95,6 +110,11 @@ const App = () => {
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'light' ? 'dark' : 'light')}
         onLogin={login}
+        rememberedName={rememberedUser}
+        isLoading={isLoading}
+        errorMessage={errorMessage}
+        onDismissError={clearError}
+        onRetry={retry}
       />
     )
   }
@@ -108,8 +128,17 @@ const App = () => {
         search={search}
         onSearch={setSearch}
         onSignOut={signOut}
+        isSaving={isSaving}
       />
       <main className="content">
+        {errorMessage && (
+          <ErrorBanner
+            message={errorMessage}
+            onRetry={retry}
+            onDismiss={clearError}
+            busy={isSaving}
+          />
+        )}
         <Tabs active={activeTab} onChange={setActiveTab} />
         {isSearching && (
           <p className="search-hint">

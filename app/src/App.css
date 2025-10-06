@@ -8,8 +8,10 @@
 .login-shell {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1.5rem;
   padding: 2rem;
   background: radial-gradient(circle at top left, var(--surface-elevated), transparent 60%),
     radial-gradient(circle at bottom right, var(--surface-muted), transparent 60%),
@@ -72,6 +74,11 @@
   background: var(--surface-elevated);
 }
 
+.field input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .login-button {
   margin-top: 0.5rem;
   padding: 0.9rem 1.25rem;
@@ -86,6 +93,13 @@
 .login-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+}
+
+.login-button:disabled {
+  opacity: 0.65;
+  cursor: progress;
+  transform: none;
+  box-shadow: none;
 }
 
 .theme-toggle {
@@ -155,6 +169,15 @@
   gap: 0.8rem;
 }
 
+.saving-indicator {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
 .user-chip {
   display: inline-flex;
   align-items: center;
@@ -198,6 +221,55 @@
   background: var(--surface-muted);
   color: var(--ink);
   font-weight: 600;
+}
+
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+[data-theme='dark'] .error-banner {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: rgba(220, 38, 38, 0.2);
+  color: #fca5a5;
+}
+
+.error-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.error-action {
+  padding: 0.4rem 0.85rem;
+  border-radius: 10px;
+  font-weight: 600;
+  background: rgba(220, 38, 38, 0.18);
+  color: inherit;
+}
+
+.error-action:hover {
+  background: rgba(220, 38, 38, 0.28);
+}
+
+.error-action.secondary {
+  background: transparent;
+  border: 1px solid currentColor;
+}
+
+.error-action.secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.error-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .search-hint {
