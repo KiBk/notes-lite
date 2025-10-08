@@ -83,6 +83,8 @@ describe('NotesGrid', () => {
       />,
     )
 
+    expect(dragEndRef.handler).toBeUndefined()
+
     const noteHeading = screen.getByText('Alpha')
     await user.click(noteHeading)
     expect(handleReorder).not.toHaveBeenCalled()

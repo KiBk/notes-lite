@@ -96,6 +96,30 @@ describe('NoteSheet', () => {
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 
+  it('focuses the palette on open and closes when focus leaves the menu', async () => {
+    const user = userEvent.setup()
+    render(
+      <NoteSheet
+        note={createTestNote()}
+        palette={palette}
+        onClose={() => {}}
+        onUpdate={() => {}}
+        onTogglePin={() => {}}
+        onToggleArchive={() => {}}
+        onDelete={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '○ Colour' }))
+    const paletteList = screen.getByRole('list')
+    expect(paletteList).toHaveFocus()
+
+    const pinButton = screen.getByRole('button', { name: '○ Pin' })
+    pinButton.focus()
+    fireEvent.blur(paletteList, { relatedTarget: pinButton })
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+  })
+
   it('only shows delete chip when the note is archived', () => {
     const { rerender } = render(
       <NoteSheet
