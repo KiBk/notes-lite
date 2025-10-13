@@ -9,7 +9,8 @@ test.describe('Pin and archive flows', () => {
   })
 
   test('pinning/unpinning updates order and archiving moves notes between buckets', async ({ page }) => {
-    await loginAs(page, 'Casey')
+    const user = `Casey-${Date.now()}`
+    await loginAs(page, user)
 
     await createNoteThroughFab(page, 'First note', 'Alpha body')
     await page.keyboard.press('Escape')
@@ -30,7 +31,18 @@ test.describe('Pin and archive flows', () => {
     await pinnedSection.getByRole('button', { name: 'Unpin note' }).click()
 
     const notesSection = page.locator('section.notes-section').filter({ hasText: /Notes|Matches/ })
-    await expect(notesSection.locator('.note-card').first()).toContainText('First note')
+    const activeTitles = await notesSection.locator('.note-card').evaluateAll((elements) => {
+      const titles: string[] = []
+      const seen = new Set<string>()
+      elements.forEach((element) => {
+        const title = element.querySelector('.note-title')?.textContent?.trim()
+        if (!title || seen.has(title)) return
+        seen.add(title)
+        titles.push(title)
+      })
+      return titles
+    })
+    expect(activeTitles[0]).toBe('First note')
 
     // Archive the second note and verify it leaves the active grid
     const secondNote = noteCard(page, 'Second note')
@@ -40,7 +52,7 @@ test.describe('Pin and archive flows', () => {
     await page.keyboard.press('Escape')
     await waitForSheetToClose(page)
 
-    await expect(page.getByRole('article', { name: /Second note/ })).toHaveCount(0)
+    await expect(notesSection.locator('.note-card', { hasText: 'Second note' })).toHaveCount(0)
 
     await page.getByRole('tab', { name: 'Archived' }).click()
     const archivedSection = page.locator('section.notes-section').filter({ hasText: 'Archived' })

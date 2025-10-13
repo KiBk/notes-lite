@@ -18,5 +18,6 @@ export const createNoteThroughFab = async (page: Page, title: string, body: stri
   await page.fill('textarea', body)
 }
 
+// NOTE: DnD clones note cards during drags, so we always scope to the first match.
 export const noteCard = (page: Page, title: string) =>
-  page.locator('.note-card').filter({ hasText: title })
+  page.locator('.note-card', { hasText: title }).first()
