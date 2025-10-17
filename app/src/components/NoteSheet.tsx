@@ -29,7 +29,8 @@ const NoteSheet = ({
   const [body, setBody] = useState(note.body)
   const titleDraftRef = useRef(title)
   const bodyDraftRef = useRef(body)
-  const pendingSave = useRef<ReturnType<typeof window.setTimeout>>()
+  type TimeoutHandle = number
+  const pendingSave = useRef<TimeoutHandle | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const paletteNode = useRef<HTMLDivElement | null>(null)
   useAutoResizeTextarea(bodyRef, body)
@@ -49,9 +50,9 @@ const NoteSheet = ({
 
   const flush = useCallback(
     (baseline?: Note, overrideUpdater?: NoteSheetProps['onUpdate']) => {
-      if (pendingSave.current) {
+      if (pendingSave.current !== null) {
         window.clearTimeout(pendingSave.current)
-        pendingSave.current = undefined
+        pendingSave.current = null
       }
       const reference = baseline ?? lastPersisted.current.note
       const updater = overrideUpdater ?? lastPersisted.current.updater
@@ -96,7 +97,7 @@ const NoteSheet = ({
   }, [flush, note, onUpdate])
 
   useEffect(() => {
-    if (pendingSave.current) {
+    if (pendingSave.current !== null) {
       window.clearTimeout(pendingSave.current)
     }
     const reference = lastPersisted.current.note
@@ -105,23 +106,23 @@ const NoteSheet = ({
       return
     }
     const timer = window.setTimeout(() => {
-      pendingSave.current = undefined
+      pendingSave.current = null
       flush()
     }, 1000)
     pendingSave.current = timer
     return () => {
       window.clearTimeout(timer)
       if (pendingSave.current === timer) {
-        pendingSave.current = undefined
+        pendingSave.current = null
       }
     }
   }, [body, flush, title])
 
   useEffect(() => {
     return () => {
-      if (pendingSave.current) {
+      if (pendingSave.current !== null) {
         window.clearTimeout(pendingSave.current)
-        pendingSave.current = undefined
+        pendingSave.current = null
       }
       flush()
     }

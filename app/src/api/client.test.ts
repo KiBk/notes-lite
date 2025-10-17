@@ -31,7 +31,8 @@ describe('API client', () => {
       await client.getStore('Pat')
 
       expect(fetchMock).toHaveBeenCalledTimes(1)
-      const [url] = fetchMock.mock.calls[0]
+      const call = fetchMock.mock.calls[0] as unknown as Parameters<typeof fetch>
+      const [url] = call
       expect(url).toBe('https://api.example.com/api/users/Pat/store')
       expect(infoSpy).toHaveBeenCalled()
     } finally {
@@ -59,7 +60,8 @@ describe('API client', () => {
       const { createApiClient } = await import('./client')
       const client = createApiClient()
       await client.getStore('Jamie')
-      const [url] = fetchMock.mock.calls[0]
+      const call = fetchMock.mock.calls[0] as unknown as Parameters<typeof fetch>
+      const [url] = call
       expect(url).toBe('http://localhost:4000/api/users/Jamie/store')
       expect(warnSpy).toHaveBeenCalled()
     } finally {

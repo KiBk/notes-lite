@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, SyntheticEvent } from 'react'
+import type { CSSProperties, JSX, MouseEvent, SyntheticEvent } from 'react'
 import type { Note } from '../types'
 import { getInkForBackground } from '../utils/color'
 import { formatRelativeTime } from '../utils/time'

@@ -151,7 +151,7 @@ describe('StoreProvider create flow bookkeeping', () => {
   })
 
   it('resolves temporary ids after successful create', async () => {
-    const tempId = 'temp-note-id'
+    const tempId = '00000000-0000-0000-0000-000000000000'
     const cryptoObj = globalThis.crypto
     if (!cryptoObj || typeof cryptoObj.randomUUID !== 'function') {
       throw new Error('crypto.randomUUID is required for this test')
@@ -186,7 +186,7 @@ describe('StoreProvider create flow bookkeeping', () => {
 
   it('cleans up pending temp ids when create fails', async () => {
     const originalCreate = mockApi.apiClient.createNote
-    const tempId = 'temp-fail-id'
+    const tempId = '00000000-0000-0000-0000-000000000001'
     const cryptoObj = globalThis.crypto
     if (!cryptoObj || typeof cryptoObj.randomUUID !== 'function') {
       throw new Error('crypto.randomUUID is required for this test')
