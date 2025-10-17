@@ -98,18 +98,30 @@ describe('App integration', () => {
     await user.type(searchBox, 'alpha')
 
     await waitFor(() => {
-      expect(screen.getByText('Alpha project')).toBeVisible()
-      expect(screen.queryByText('Beta backlog')).toBeNull()
-      expect(screen.queryByText('Gamma archive')).toBeNull()
+      expect(screen.getByRole('heading', { name: /Alpha project/i })).toBeVisible()
+      expect(screen.queryByRole('heading', { name: /Beta backlog/i })).toBeNull()
+      expect(screen.queryByRole('heading', { name: /Gamma archive/i })).toBeNull()
     })
 
+    const alphaMarks = screen.getAllByText(/alpha/i, { selector: 'mark' })
+    expect(alphaMarks.length).toBeGreaterThan(0)
+
     await user.clear(searchBox)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Alpha project/i })).toBeVisible()
+      expect(screen.queryByText(/alpha/i, { selector: 'mark' })).toBeNull()
+    })
+
     await user.type(searchBox, 'gamma')
 
     await waitFor(() => {
-      expect(screen.getByText('Gamma archive')).toBeVisible()
-      expect(screen.queryByText('Alpha project')).toBeNull()
+      expect(screen.getByRole('heading', { name: /Gamma archive/i })).toBeVisible()
+      expect(screen.queryByRole('heading', { name: /Alpha project/i })).toBeNull()
     })
+
+    const gammaMarks = screen.getAllByText(/gamma/i, { selector: 'mark' })
+    expect(gammaMarks.length).toBeGreaterThan(0)
   })
 
   it('closes note sheet after deleting the active note', async () => {

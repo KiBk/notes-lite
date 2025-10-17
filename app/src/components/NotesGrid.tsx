@@ -30,6 +30,7 @@ interface NotesGridProps {
   enableDrag?: boolean
   emptyLabel?: string
   showPin?: boolean
+  highlightQuery?: string
 }
 
 const SortableNote = ({
@@ -37,11 +38,13 @@ const SortableNote = ({
   onOpen,
   onTogglePin,
   showPin,
+  highlightQuery,
 }: {
   note: Note
   onOpen: (note: Note) => void
   onTogglePin?: (note: Note) => void
   showPin?: boolean
+  highlightQuery?: string
 }) => {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: note.id })
   const [rowSpan, setRowSpan] = useState(1)
@@ -101,7 +104,13 @@ const SortableNote = ({
       {...accessibilityAttributes}
       {...listeners}
     >
-      <NoteCard note={note} onOpen={onOpen} onTogglePin={onTogglePin} showPin={showPin} />
+      <NoteCard
+        note={note}
+        onOpen={onOpen}
+        onTogglePin={onTogglePin}
+        showPin={showPin}
+        highlightQuery={highlightQuery}
+      />
     </div>
   )
 }
@@ -116,6 +125,7 @@ const NotesGrid = ({
   enableDrag = true,
   emptyLabel,
   showPin = true,
+  highlightQuery,
 }: NotesGridProps) => {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -153,6 +163,7 @@ const NotesGrid = ({
                   onOpen={onOpen}
                   onTogglePin={onTogglePin}
                   showPin={showPin}
+                  highlightQuery={highlightQuery}
                 />
               ))}
             </div>

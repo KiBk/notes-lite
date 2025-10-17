@@ -80,7 +80,8 @@ const App = () => {
     })()
   }
 
-  const query = search.trim().toLowerCase()
+  const trimmedSearch = search.trim()
+  const query = trimmedSearch.toLowerCase()
   const isSearching = query.length > 0
 
   const matchesQuery = (note: Note) => {
@@ -156,6 +157,7 @@ const App = () => {
                 onOpen={handleOpenNote}
                 onTogglePin={(note) => togglePinned(note.id)}
                 enableDrag={!isSearching}
+                highlightQuery={isSearching ? trimmedSearch : undefined}
               />
             )}
             <NotesGrid
@@ -174,6 +176,7 @@ const App = () => {
               onOpen={handleOpenNote}
               onTogglePin={(note) => togglePinned(note.id)}
               enableDrag={!isSearching}
+              highlightQuery={isSearching ? trimmedSearch : undefined}
               emptyLabel={
                 !isSearching && filteredPinned.length === 0 && filteredUnpinned.length === 0
                   ? 'New notes land here. Create your first thought.'
@@ -192,6 +195,7 @@ const App = () => {
             onTogglePin={(note) => togglePinned(note.id)}
             enableDrag={!isSearching}
             showPin={false}
+            highlightQuery={isSearching ? trimmedSearch : undefined}
             emptyLabel={
               !isSearching && filteredArchived.length === 0
                 ? 'Archived notes will rest here.'

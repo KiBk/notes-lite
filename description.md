@@ -12,7 +12,7 @@ A lightweight, Google Keep–style notes app that supports quick capture, editin
 ## Organizing Notes
 - **Pinned section** – Hover/focus reveals a minimalist pin control on each card. Pinned notes gather in a dedicated grid above other notes while keeping consistent spacing.
 - **Active vs. Archived** – Two tabs (“Notes”, “Archived”) swap between active and stored-away content. Archive/unarchive actions live in the sheet footer chips; archived notes expose a “Delete forever” chip.
-- **Search everywhere** – A top search bar filters across all notes (active and archived). Results show active matches first, followed by archived ones.
+- **Search everywhere** – A top search bar filters across all notes (active and archived). Results show active matches first, followed by archived ones, and matching terms are softly highlighted right inside the card preview.
 - **Drag-and-drop ordering** – Reorder notes simply by dragging cards. Active notes let you rearrange within pinned and unpinned sections; archived notes have their own order. The new sequence is saved immediately.
 
 ## Additional Touches
