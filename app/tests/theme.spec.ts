@@ -22,12 +22,25 @@ test.describe('Theme switching', () => {
     const sampleNote = noteCard(page, 'Theme sample').first()
     await expect(sampleNote).toBeVisible()
 
+    const readCardColor = async () =>
+      sampleNote.evaluate((element) => getComputedStyle(element).getPropertyValue('--card-color').trim())
+
+    await expect.poll(async () => (await readCardColor()).toLowerCase()).toBe('#fde2e4')
+
     await page.getByRole('button', { name: 'Toggle theme' }).click()
 
     await expect.poll(async () => page.evaluate(() => document.documentElement.dataset.theme)).toBe('dark')
 
     const colorScheme = await page.evaluate(() => document.documentElement.style.colorScheme)
     expect(colorScheme).toBe('dark')
+
+    await expect.poll(async () => (await readCardColor()).toLowerCase()).toBe('#5b3a3f')
+
+    await page.getByRole('button', { name: 'Toggle theme' }).click()
+
+    await expect.poll(async () => page.evaluate(() => document.documentElement.dataset.theme)).toBe('light')
+    await expect.poll(async () => (await readCardColor()).toLowerCase()).toBe('#fde2e4')
+    await expect.poll(async () => page.evaluate(() => document.documentElement.style.colorScheme)).toBe('light')
   })
 
   test('persists theme and remembered user across reload and sign out', async ({ page }) => {

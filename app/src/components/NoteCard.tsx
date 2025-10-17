@@ -1,8 +1,7 @@
 import type { CSSProperties, MouseEvent, SyntheticEvent } from 'react'
 import type { Note } from '../types'
-import { getInkForBackground, hexToRgba } from '../utils/color'
+import { getInkForBackground } from '../utils/color'
 import { formatRelativeTime } from '../utils/time'
-import { useStore } from '../store-context'
 
 interface NoteCardProps {
   note: Note
@@ -12,10 +11,21 @@ interface NoteCardProps {
 }
 
 const NoteCard = ({ note, onOpen, onTogglePin, showPin = true }: NoteCardProps) => {
-  const { theme } = useStore()
   const ink = getInkForBackground(note.color)
-  const fadeStart = hexToRgba(note.color, 0)
-  const fadeEnd = hexToRgba(note.color, theme === 'dark' ? 0.88 : 0.72)
+  const computeApproxLines = (content: string) => {
+    if (!content) return 0
+    const normalized = content.replace(/\r\n/g, '\n')
+    return normalized.split('\n').reduce((count, segment) => {
+      const length = segment.trim().length
+      if (length === 0) {
+        return count + 1
+      }
+      return count + Math.max(1, Math.ceil(length / 50))
+    }, 0)
+  }
+
+  const approxLines = computeApproxLines(note.body)
+  const lineClamp = Math.min(20, Math.max(5, approxLines <= 5 ? approxLines || 5 : approxLines + 2))
 
   const haltEvent = (event: SyntheticEvent) => {
     event.preventDefault()
@@ -40,8 +50,7 @@ const NoteCard = ({ note, onOpen, onTogglePin, showPin = true }: NoteCardProps) 
       style={{
         '--card-color': note.color,
         '--card-ink': ink,
-        '--card-fade-start': fadeStart,
-        '--card-fade-end': fadeEnd,
+        '--card-line-clamp': lineClamp,
       } as CSSProperties}
       onClick={() => onOpen(note)}
       tabIndex={0}

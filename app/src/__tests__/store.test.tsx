@@ -264,6 +264,41 @@ describe('StoreProvider theme persistence', () => {
     expect(persisted.lastUser).toBe('Dakota')
     expect(getStore(storeRef).rememberedUser).toBe('Dakota')
   })
+
+  it('remaps stored note colours when switching between light and dark themes', async () => {
+    const note = buildNote({ id: 'colour-note', color: '#fde2e4', title: 'Colour swap' })
+    seedUser('River', {
+      notes: { 'colour-note': note },
+      pinnedOrder: [],
+      unpinnedOrder: ['colour-note'],
+      archivedOrder: [],
+    })
+
+    const storeRef = renderStore()
+
+    await act(async () => {
+      getStore(storeRef).login('River')
+    })
+    await waitFor(() => expect(getStore(storeRef).currentUser).toBe('River'))
+
+    const updateSpy = vi.spyOn(mockApi.apiClient, 'updateNote')
+
+    await act(async () => {
+      getStore(storeRef).setTheme('dark')
+    })
+
+    await waitFor(() => {
+      const store = getStore(storeRef)
+      expect(store.theme).toBe('dark')
+      expect(store.unpinnedNotes[0]?.color).toBe('#5b3a3f')
+    })
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith('River', 'colour-note', expect.objectContaining({ color: '#5b3a3f' }))
+    })
+
+    updateSpy.mockRestore()
+  })
 })
 
 describe('StoreProvider update payload shaping', () => {

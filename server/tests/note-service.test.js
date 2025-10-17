@@ -126,14 +126,18 @@ test('reorderBucket updates positions and guards malformed payloads', async (t) 
   const b = service.createNote(user, { title: 'B' })
   const c = service.createNote(user, { title: 'C' })
 
+  service.reorderBucket(user, 'unpinned', { order: [c.id, a.id, b.id] })
+  let store = service.getUserStore(user)
+  assert.deepEqual(store.unpinnedOrder, [c.id, a.id, b.id])
+
   db.prepare('UPDATE note_orders SET position = position + 10 WHERE user_id = ? AND bucket = ?').run(
     user,
     'unpinned',
   )
 
-  service.reorderBucket(user, 'unpinned', { order: [c.id, a.id, b.id] })
-  let store = service.getUserStore(user)
-  assert.deepEqual(store.unpinnedOrder, [c.id, a.id, b.id])
+  service.reorderBucket(user, 'unpinned', { order: [b.id, c.id, a.id] })
+  store = service.getUserStore(user)
+  assert.deepEqual(store.unpinnedOrder, [b.id, c.id, a.id])
 
   await t.test('rejects duplicate ids', () => {
     assert.throws(

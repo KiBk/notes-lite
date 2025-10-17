@@ -372,24 +372,14 @@
 
 .note-body {
   margin: 0;
-  position: relative;
-  overflow: hidden;
-  max-height: 12rem;
   line-height: 1.5;
-}
-
-.note-body::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2.8rem;
-  background: linear-gradient(
-    to bottom,
-    var(--card-fade-start, rgba(0, 0, 0, 0)),
-    var(--card-fade-end, rgba(0, 0, 0, 0.12))
-  );
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--card-line-clamp, 8);
+  line-clamp: var(--card-line-clamp, 8);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
 }
 
 .note-footer {

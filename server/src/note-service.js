@@ -287,9 +287,15 @@ export const createNoteService = (db) => {
     }
 
     const tx = db.transaction((ids) => {
+      // Park each note on a temporary negative position to avoid UNIQUE collisions
+      ids.forEach((noteId, idx) => {
+        updateOrderPositionStmt.run(-(idx + 1), userId, noteId)
+      })
+
       ids.forEach((noteId, idx) => {
         updateOrderPositionStmt.run(idx, userId, noteId)
       })
+
       touchUserStmt.run(userId)
     })
 

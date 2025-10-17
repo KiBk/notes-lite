@@ -46,6 +46,15 @@ const SortableNote = ({
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: note.id })
   const [rowSpan, setRowSpan] = useState(1)
   const nodeRef = useRef<HTMLDivElement | null>(null)
+  const { role, tabIndex, ...otherAttributes } = attributes as typeof attributes & {
+    role?: string
+    tabIndex?: number
+  }
+  const accessibilityAttributes = {
+    ...otherAttributes,
+    role: role === 'button' ? 'group' : role,
+    tabIndex: tabIndex !== undefined ? -1 : tabIndex,
+  }
 
   useEffect(() => {
     const node = nodeRef.current
@@ -89,7 +98,7 @@ const SortableNote = ({
         nodeRef.current = element
       }}
       style={style}
-      {...attributes}
+      {...accessibilityAttributes}
       {...listeners}
     >
       <NoteCard note={note} onOpen={onOpen} onTogglePin={onTogglePin} showPin={showPin} />

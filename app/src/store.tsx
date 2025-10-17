@@ -34,6 +34,54 @@ const DARK_PASTELS = [
   '#36475a',
 ]
 
+const normalizeHex = (hex: string) => hex.trim().toLowerCase()
+
+const paletteForTheme = (mode: ThemeMode) => (mode === 'dark' ? DARK_PASTELS : LIGHT_PASTELS)
+
+type NoteColorUpdate = { id: string; color: string }
+
+const remapUserStoreColors = (
+  store: UserStore,
+  fromTheme: ThemeMode,
+  toTheme: ThemeMode,
+): { store: UserStore; updates: NoteColorUpdate[] } => {
+  if (fromTheme === toTheme) {
+    return { store, updates: [] }
+  }
+
+  const sourcePalette = paletteForTheme(fromTheme)
+  const targetPalette = paletteForTheme(toTheme)
+  const lookup = new Map(sourcePalette.map((color, index) => [normalizeHex(color), index]))
+
+  const nextNotes: Record<string, Note> = { ...store.notes }
+  const updates: NoteColorUpdate[] = []
+
+  Object.entries(store.notes).forEach(([id, note]) => {
+    const paletteIndex = lookup.get(normalizeHex(note.color))
+    if (paletteIndex === undefined) {
+      return
+    }
+    const nextColor = targetPalette[paletteIndex]
+    if (!nextColor || nextColor === note.color) {
+      return
+    }
+    nextNotes[id] = { ...note, color: nextColor }
+    updates.push({ id, color: nextColor })
+  })
+
+  if (updates.length === 0) {
+    return { store, updates }
+  }
+
+  return {
+    store: {
+      ...store,
+      notes: nextNotes,
+    },
+    updates,
+  }
+}
+
 const emptyUserStore: UserStore = {
   notes: {},
   pinnedOrder: [],
@@ -259,15 +307,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     setErrorState(null)
   }, [])
 
-  const setTheme = useCallback((mode: ThemeMode) => {
-    setPersisted((prev) => {
-      if ((prev.theme ?? getSystemTheme()) === mode) {
-        return prev
-      }
-      return { ...prev, theme: mode }
-    })
-  }, [])
-
   const createNote = useCallback(async () => {
     if (!currentUser) return undefined
     const userId = currentUser
@@ -342,6 +381,37 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       })
     },
     [currentUser, runMutation],
+  )
+
+  const setTheme = useCallback(
+    (mode: ThemeMode) => {
+      const previousTheme = theme
+      if (previousTheme === mode) {
+        return
+      }
+
+      let updates: NoteColorUpdate[] = []
+      if (currentUser) {
+        const { store: recoloredStore, updates: recolored } = remapUserStoreColors(
+          cloneUser(storeRef.current),
+          previousTheme,
+          mode,
+        )
+        if (recolored.length > 0) {
+          setUserStore(recoloredStore)
+          updates = recolored
+        }
+      }
+
+      setPersisted((prev) => ({ ...prev, theme: mode }))
+
+      if (updates.length > 0) {
+        updates.forEach(({ id, color }) => {
+          updateNote(id, { color })
+        })
+      }
+    },
+    [currentUser, theme, updateNote],
   )
 
   const togglePinned = useCallback(

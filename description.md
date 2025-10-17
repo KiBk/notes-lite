@@ -17,7 +17,7 @@ A lightweight, Google Keep–style notes app that supports quick capture, editin
 
 ## Additional Touches
 - **Visual polish** – Use blurred sheet overlays, subtle shadows, softened borders, and auto-expanding text areas to keep the UI modern. Keep action chips horizontally aligned.
-- **Theme aware** – Provide a persistent light/dark theme toggle accessible from both the login screen and top bar. Persist the chosen theme in local storage and respect system defaults; existing notes keep their current colour when you switch themes.
+- **Theme aware** – Provide a persistent light/dark theme toggle accessible from both the login screen and top bar. Persist the chosen theme in local storage and respect system defaults; switching themes remaps every note colour between the light and dark palettes.
 - **Session aware** – Each user’s notes remain separate. Theme choice and last-used name persist locally, but refreshing the page returns you to the sign-in screen.
 
 ## Implementation
@@ -31,5 +31,5 @@ A lightweight, Google Keep–style notes app that supports quick capture, editin
 - Global search (`TopBar.tsx`, `App.tsx`): filters across active and archived notes, grouping results for clarity.
 - Drag-and-drop ordering (`NotesGrid.tsx`, `@dnd-kit`): pointer/touch sensors feed reordering callbacks that persist the new sequence.
 - Theme-aware cards (`NoteCard.tsx`, `App.css`): note preview fades sample the card colour, adjusting opacity per theme so long text blends smoothly.
-- Theming (`ThemeToggle.tsx`, `store.tsx`): light/dark selection stored alongside the user profile; new notes pick the current palette’s defaults, while existing notes retain their set colours when you toggle themes.
+- Theming (`ThemeToggle.tsx`, `store.tsx`): light/dark selection stored alongside the user profile; switching modes remaps note colours between the paired light/dark palettes while new notes pick the current palette’s defaults.
 - Session persistence (`store.tsx`): serialized state keeps users, note collections, and preferences intact across refreshes.
