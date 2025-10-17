@@ -1,5 +1,5 @@
 # Backend artifacts
 server/node_modules/
-data/
+docker_volume_notes_data/
 *.db
 *.sqlite
