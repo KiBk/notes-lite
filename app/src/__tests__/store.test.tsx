@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoreProvider } from '../store'
 import { useStore } from '../store-context'
 import type { StoreValue } from '../store-types'
-import type { Note, UserStore } from '../types'
+import type { Note, NoteUpdatePayload, UserStore } from '../types'
 vi.mock('../api/client', async () => {
   const module = await import('../../tests/helpers/apiMockInstance')
   return {
@@ -324,8 +324,8 @@ describe('StoreProvider update payload shaping', () => {
     await waitFor(() => expect(getStore(storeRef).currentUser).toBe('Riley'))
 
     const originalUpdate = mockApi.apiClient.updateNote
-    let captured: any
-    const updateSpy = vi.fn(async (userId: string, noteId: string, payload: any) => {
+    let captured: NoteUpdatePayload | undefined
+    const updateSpy = vi.fn(async (userId: string, noteId: string, payload: NoteUpdatePayload) => {
       captured = payload
       return originalUpdate(userId, noteId, payload)
     })

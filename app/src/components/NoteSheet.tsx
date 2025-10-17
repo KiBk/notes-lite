@@ -93,7 +93,7 @@ const NoteSheet = ({
       }
     }
     lastPersisted.current = { note, updater: onUpdate }
-  }, [flush, note.body, note.id, note.title, onUpdate])
+  }, [flush, note, onUpdate])
 
   useEffect(() => {
     if (pendingSave.current) {
@@ -129,7 +129,7 @@ const NoteSheet = ({
 
   useEffect(() => {
     setShowPalette(false)
-  }, [note.id])
+  }, [note])
 
   useEffect(() => {
     if (showPalette && paletteNode.current) {

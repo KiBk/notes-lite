@@ -1,6 +1,7 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
+import type { ComponentProps } from 'react'
 import type { DragEndEvent } from '@dnd-kit/core'
 import NotesGrid from '../NotesGrid'
 import { createTestNote, renderWithStore } from '../../../tests/utils/test-utils'
@@ -11,7 +12,7 @@ vi.mock('@dnd-kit/core', async () => {
   const actual = await vi.importActual<typeof import('@dnd-kit/core')>('@dnd-kit/core')
   return {
     ...actual,
-    DndContext: ({ children, onDragEnd, ...rest }: any) => {
+    DndContext: ({ children, onDragEnd, ...rest }: ComponentProps<typeof actual.DndContext>) => {
       dragEndRef.handler = onDragEnd as ((event: DragEndEvent) => void) | undefined
       return (
         <actual.DndContext onDragEnd={onDragEnd} {...rest}>

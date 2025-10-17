@@ -18,7 +18,7 @@ test.describe('Accessibility smoke', () => {
     await context.addInitScript(() => {
       try {
         window.localStorage.clear()
-      } catch (error) {
+      } catch {
         // ignore storage errors in automation context
       }
     })
